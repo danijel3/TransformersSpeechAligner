@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <title>Alignment Debug</title>
+    <style>
+        #segments {
+            padding: 1rem;
+            margin-top: 6em;
+        }
+
+        #player--container {
+            top: 0;
+            left: 0;
+            position: fixed;
+            width: 100%;
+            padding-top: 1em;
+            padding-bottom: 1em;
+            background-color: #ccc;
+            text-align: center;
+        }
+
+        #legend {
+            padding: 0.5em;
+            margin: 0.5em;
+            background-color: #eee;
+            border: 1px dashed black;
+            margin-bottom: 2em;
+        }
+
+        .txt {
+            margin-bottom: 1rem;
+        }
+
+        .txt button {
+            margin-right: 0.5rem;
+        }
+
+        .wer {
+            font-size: 7pt;
+            font-weight: bold;
+            margin-right: 1rem;
+            color: white;
+            background-color: hsl(250, 30%, 40%);
+            padding: 0.3em;
+            border-radius: 25%;
+        }
+
+
+        .qual_perf {
+            color: darkgreen;
+            font-weight: bold;
+        }
+
+        .qual_good {
+            color: green;
+        }
+
+        .qual_mediocre {
+            color: orange;
+        }
+
+        .qual_bad {
+            color: red;
+        }
+
+        .qual_none {
+            color: gray;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+
+<div id="player--container">
+    <audio id="player" controls style="width:90%">
+        <source src="audio.mp3">
+    </audio>
+</div>
+
+
+<div id="segments">
+    <div id="legend">
+        <span class="wer">word error rate %</span>
+        <span class="qual_perf">perfect quality</span>
+        <span class="qual_good">good quality</span>
+        <span class="qual_mediocre">mediocre quality</span>
+        <span class="qual_bad">bad quality</span>
+        <span class="qual_none">unaligned segments</span>
+    </div>
+</div>
+
+<script>
+    const player = document.getElementById('player');
+
+    let pause_after = -1;
+    setInterval(() => {
+        if (pause_after > 0 && player.currentTime > pause_after) {
+            player.pause();
+            pause_after = -1;
+        }
+    }, 100);
+
+    function play() {
+        let time = document.getElementById('time').value;
+        let tok = time.trim().split(' ')
+        let start = Number(tok[0]);
+        let end = Number(tok[1]);
+        player.currentTime = start;
+        pause_after = end;
+        player.play();
+    }
+
+    function playbtn(evt) {
+        let btn = evt.target;
+        let start = Number(btn.getAttribute('data-start'));
+        let end = Number(btn.getAttribute('data-end'));
+        player.currentTime = start;
+        player.currentTime = start;
+        pause_after = end;
+        player.play();
+    }
+
+    fetch('./segs.json').then((resp) => resp.json()).then((data) => {
+
+        const segments = document.getElementById("segments");
+        data.forEach((seg) => {
+
+            let trans = document.createElement('div');
+            let btn = document.createElement('button');
+            let txt = document.createElement('span');
+
+            trans.classList.add('txt');
+
+            btn.setAttribute('data-start', seg['start']);
+            btn.setAttribute('data-end', seg['end']);
+            btn.onclick = playbtn;
+            btn.innerHTML = '&#9658;';
+
+            trans.appendChild(btn);
+
+            txt.innerText = seg['text'];
+            let quality = 'none';
+            if ('errors' in seg) {
+                let wer = document.createElement('span');
+                wer.innerText = (100.0 * seg['errors']['wer']).toFixed(0) + '%';
+                wer.classList.add('wer');
+                trans.appendChild(wer);
+                quality = 'perf';
+                if (seg['errors']['wer'] > 0) {
+                    if (seg['errors']['wer'] < 0.5) {
+                        quality = 'good';
+                    } else if (seg['errors']['wer'] < 1.0) {
+                        quality = 'mediocre';
+                    } else {
+                        quality = 'bad';
+                    }
+                }
+            }
+
+            trans.classList.add('qual_' + quality);
+            trans.appendChild(txt);
+            segments.appendChild(trans);
+        });
+    });
+</script>
+</body>
+</html>

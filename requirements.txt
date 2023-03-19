@@ -1,0 +1,7 @@
+transformers
+datasets
+kenlm
+pyctcdecode
+jupyter
+matplotlib
+torchaudio
