@@ -1,15 +1,25 @@
 import argparse
 import json
 import logging
+import sys
 from dataclasses import field, dataclass
+from json import JSONDecodeError
 from math import ceil
 from pathlib import Path
-from typing import Dict, Set, List, Tuple
+from typing import Dict, Set, List, Tuple, Optional
 
 from Levenshtein import distance, opcodes
 
 from src.align import align, fix_times, convert_ali_to_segments
 from src.data_loaders import Word, load_audio, extract_audio, load_reco
+
+logging.basicConfig(
+    format="%(asctime)s [%(levelname)s] - %(message)s",
+    datefmt="%m/%d/%Y %H:%M:%S",
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 @dataclass
@@ -69,21 +79,45 @@ class Matcher:
 
     def __init__(self, corpus: Path):
         lines = []
+        orig_lines = None
+        self.unnorm = None
         self.corpus = []
         words = set()
         self.vocab = Dictionary()
-        with open(corpus) as f:
-            for l in f:
-                tok = l.strip().split()
-                lines.append(tok)
-                words.update(tok)
-            self.vocab.put(words)
-            for l in lines:
-                for w in l:
-                    self.corpus.append(self.vocab.get_id(w))
+        try:
+            with open(corpus) as f:
+                ali = json.load(f)
+            orig_lines = []
+            for l in ali:
+                lines.append(l[1])
+                orig_lines.append(l[0])
+                words.update(l[0])
+                words.update(l[1])
 
-    def get_corpus_chunk(self, start: int, end: int) -> str:
-        return self.vocab.get_text(self.corpus[start:end])
+        except JSONDecodeError:
+            with open(corpus) as f:
+                for l in f:
+                    tok = l.strip().split()
+                    lines.append(tok)
+                    words.update(tok)
+
+        self.vocab.put(words)
+
+        for l in lines:
+            for w in l:
+                self.corpus.append(self.vocab.get_id(w))
+        if orig_lines:
+            self.unnorm = []
+            for l in orig_lines:
+                for w in l:
+                    self.unnorm.append(self.vocab.get_id(w))
+
+    def get_corpus_chunk(self, start: int, end: int) -> Tuple[str, Optional[str]]:
+        norm = self.vocab.get_text(self.corpus[start:end])
+        orig = None
+        if self.unnorm:
+            orig = self.vocab.get_text(self.unnorm[start:end])
+        return norm, orig
 
     def _initial_match(self, text: str, threshold: float = 0.9) -> List[Tuple[int, float]]:
         """
@@ -146,15 +180,16 @@ class Matcher:
         he = m[-1][2]
         rb = m[0][3]
         re = m[-1][4]
-        return ((hb, he), (rb, re))
+        return (hb, he), (rb, re)
 
     def run(self, words: List[Word], audio_file: Path, model: str,
             chunk_len: int = 200, chunk_stride: int = 200) -> List[Dict]:
-
         ali_segs = []
         ali_masks = []
-        ali_ref_texs = []
+        ali_ref_texts = []
+        ali_orig_texts = []
 
+        logger.info('Loading audio...')
         audio = load_audio(audio_file)
 
         chunk_num = ceil(len(words) / chunk_stride)
@@ -168,22 +203,34 @@ class Matcher:
             locs = self._initial_match(text)
             min_i, min_d = self._find_min_diff(locs, text)
             (hb, he), (rb, re) = self._find_matching_seq(text, min_i)
-            ref_text = self.get_corpus_chunk(min_i + rb, min_i + re)
+            ref_text, orig_text = self.get_corpus_chunk(min_i + rb, min_i + re)
 
             seg, mask = extract_audio(audio['input_values'], words_chunk[hb:he], audio['samp_freq'])
 
             ali_segs.append(seg)
             ali_masks.append(mask)
-            ali_ref_texs.append(ref_text)
+            ali_ref_texts.append(ref_text)
+            if orig_text:
+                ali_orig_texts.append(orig_text)
 
-        ali_res = align(model, ali_segs, ali_ref_texs)
+        logger.info('Aligning reference to audio...')
+        ali_res = align(model, ali_segs, ali_ref_texts)
 
+        logger.info('Fixing times...')
         ali_all = []
-        for ali_words, mask in zip(ali_res.values(), ali_masks):
-            ali_fixed = fix_times(ali_words, mask, audio['samp_freq'])
-            ali_all.extend(ali_fixed)
+        if len(ali_orig_texts) > 0:
+            for ali_words, mask, orig in zip(ali_res.values(), ali_masks, ali_orig_texts):
+                ali_fixed = fix_times(ali_words, mask, audio['samp_freq'])
+                for w, o in zip(ali_fixed, orig.split()):
+                    w['norm'] = w['text']
+                    w['text'] = o
+                ali_all.extend(ali_fixed)
+        else:
+            for ali_words, mask in zip(ali_res.values(), ali_masks):
+                ali_fixed = fix_times(ali_words, mask, audio['samp_freq'])
+                ali_all.extend(ali_fixed)
 
-        # remove overlap
+        logger.info('Removing overlapping words...')
         ali_all = sorted(ali_all, key=lambda x: x['timestamp'][0])
         ret = [ali_all[0]]
         for x in ali_all[1:]:
@@ -202,24 +249,28 @@ def main():
     parser.add_argument('model', type=str)
     parser.add_argument('output', type=Path)
     parser.add_argument('--chunk-len', type=int, default=200)
-    parser.add_argument('--chunk-stride', type=int, default=200)
-    parser.add_argument('--sil-gap', type=float, default=2)
+    parser.add_argument('--chunk-stride', type=int, default=150)
+    parser.add_argument('--sil-gap', type=float, default=1)
     parser.add_argument('--max-len', type=float, default=-1)
 
     args = parser.parse_args()
 
+    logger.info('Loading reco data...')
     words = load_reco(args.words)
 
     if args.recoid not in words:
-        logging.error(f'Recording with id {args.recoid} is not present in the {args.words} file.')
+        logger.error(f'Recording with id {args.recoid} is not present in the {args.words} file.')
         return
 
     words = words[args.recoid]
 
+    logger.info('Loading transcript...')
     matcher = Matcher(args.transcript)
 
+    logger.info('Matching reco and transcript...')
     ali = matcher.run(words, args.audio, args.model, args.chunk_len, args.chunk_stride)
 
+    logger.info('Grouping segments...')
     segs = convert_ali_to_segments(ali, words, args.sil_gap, args.max_len)
 
     with open(args.output, 'w') as f:

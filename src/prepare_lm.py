@@ -30,14 +30,12 @@ def make_ngram(text_file: Path, lm_dir: Path, bin_path: Optional[Path] = None) -
     return lm_dir / 'lm.binary', lm_dir / 'unigrams.txt'
 
 
-def update_model(model_in: str, lm: Path, unigrams: Path, model_out: Path):
-    Repository(local_dir=str(model_out), clone_from=model_in)
-
-    if (model_out / 'language_model').exists():
-        shutil.copy(lm, model_out / 'language_model' / 'lm.binary')
-        shutil.copy(unigrams, model_out / 'language_model' / 'unigrams.txt')
+def update_model(lm: Path, unigrams: Path, model_dir: Path):
+    if (model_dir / 'language_model').exists():
+        shutil.copy(lm, model_dir / 'language_model' / 'lm.binary')
+        shutil.copy(unigrams, model_dir / 'language_model' / 'unigrams.txt')
     else:
-        with open(model_out / 'vocab.json') as f:
+        with open(model_dir / 'vocab.json') as f:
             vocab_dict = json.load(f)
 
         with open(unigrams) as f:
@@ -46,29 +44,29 @@ def update_model(model_in: str, lm: Path, unigrams: Path, model_out: Path):
         sorted_vocab_dict = {k.lower(): v for k, v in sorted(vocab_dict.items(), key=lambda item: item[1])}
         labels = list(sorted_vocab_dict.keys())
 
-        processor = AutoProcessor.from_pretrained(model_out)
+        processor = AutoProcessor.from_pretrained(model_dir)
 
         decoder = build_ctcdecoder(labels=labels, kenlm_model_path=str(lm), unigrams=unigram_list)
 
         processor_with_lm = Wav2Vec2ProcessorWithLM(feature_extractor=processor.feature_extractor,
                                                     tokenizer=processor.tokenizer, decoder=decoder)
 
-        processor_with_lm.save_pretrained(model_out)
+        processor_with_lm.save_pretrained(model_dir)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('text', type=Path)
-    parser.add_argument('model_in', type=str)
-    parser.add_argument('model_out', type=Path)
-    parser.add_argument('--kenlm-bin', type=Path)
+    parser.add_argument('model_dir', type=Path)
+    parser.add_argument('--repo', type=str)
+    parser.add_argument('--kenlm-bin', type=Path, default=Path('/opt/kenlm/bin'))
 
     args = parser.parse_args()
+
+    if args.repo:
+        Repository(local_dir=str(args.model_dir), clone_from=args.repo)
 
     with TemporaryDirectory() as fp:
         temp_dir = Path(fp)
         lm, unigrams = make_ngram(args.text, temp_dir, bin_path=args.kenlm_bin)
-        shutil.copy(temp_dir / 'lm.arpa', Path('.') / 'lm.arpa')
-        shutil.copy(lm, Path('.') / 'lm.binary')
-        shutil.copy(unigrams, Path('.') / 'unigrams.txt')
-        update_model(args.model_in, lm, unigrams, args.model_out)
+        update_model(lm, unigrams, args.model_dir)

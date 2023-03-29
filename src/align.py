@@ -258,6 +258,7 @@ def convert_ali_to_segments(ali: List[Dict], reco: List[Word], sil_gap=2, max_le
 
     # create output list of dicts
     ret = [{'text': ' '.join([x['text'] for x in seg]),
+            'norm': ' '.join([x['norm'] if 'norm' in x else x['text'] for x in seg]) if 'norm' in seg[0] else None,
             'start': seg[0]['timestamp'][0],
             'end': seg[-1]['timestamp'][1],
             'chunks': [x['timestamp'] for x in seg],
@@ -287,7 +288,10 @@ def convert_ali_to_segments(ali: List[Dict], reco: List[Word], sil_gap=2, max_le
 
     for seg in ret:
         seg['reco'] = ' '.join([x.text for x in sorted(seg['reco'], key=lambda x: x.start)])
-        seg['errors'] = get_errors(seg['text'].split(), seg['reco'].split())
+        if seg['norm']:
+            seg['errors'] = get_errors(seg['norm'].split(), seg['reco'].split())
+        else:
+            seg['errors'] = get_errors(seg['text'].split(), seg['reco'].split())
         seg['errors']['cer'] = get_errors(seg['text'], seg['reco'])['wer']
 
     # combine unaligned reco words into segments
