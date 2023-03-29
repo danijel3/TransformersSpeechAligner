@@ -91,6 +91,8 @@
 
 <script>
     const player = document.getElementById('player');
+    const urlParams = new URLSearchParams(window.location.search);
+    player.src = urlParams.get('audio');
 
     let pause_after = -1;
     setInterval(() => {
@@ -120,7 +122,8 @@
         player.play();
     }
 
-    fetch('./segs.json').then((resp) => resp.json()).then((data) => {
+    const seg_file = urlParams.get('json');
+    fetch(seg_file).then((resp) => resp.json()).then((data) => {
 
         const segments = document.getElementById("segments");
         data.forEach((seg) => {
@@ -138,7 +141,10 @@
 
             trans.appendChild(btn);
 
-            txt.innerText = seg['text'];
+            if ('unnorm' in seg)
+                txt.innerText = seg['unnorm'].replaceAll(/\s?_\s?/g, ' ');
+            else
+                txt.innerText = seg['text'];
             let quality = 'none';
             if ('errors' in seg) {
                 let wer = document.createElement('span');
