@@ -1,6 +1,7 @@
 import argparse
 import json
 import logging
+import sys
 import time
 from math import ceil
 from pathlib import Path
@@ -10,13 +11,21 @@ import numpy as np
 import torch
 import torchaudio
 from Levenshtein import editops
-from datasets import Dataset, disable_caching, set_caching_enabled
+from datasets import Dataset, disable_caching
 from pympi import TextGrid
 from tqdm import tqdm
 from transformers import Wav2Vec2Processor, AutoModelForCTC
 from transformers.pipelines.automatic_speech_recognition import chunk_iter
 
 from src.data_loaders import Word
+
+logging.basicConfig(
+    format="%(asctime)s [%(levelname)s] - %(message)s",
+    datefmt="%m/%d/%Y %H:%M:%S",
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 def viterbi(logits: np.ndarray, labels: np.ndarray, pad_id: int = 0) -> Tuple[List[int], np.ndarray]:
@@ -84,10 +93,10 @@ def align_logits(logits: List[np.ndarray], labels: List[List[int]],
 def align(w2v2_model: str, audio: List[np.ndarray], text: List[str], ids: Optional[List[str]] = None,
           chunk_len: float = 10, left_stride: float = 4, right_stride: float = 2, batch_size: int = 4) -> Dict:
     if not audio:
-        logging.warning('No data given!')
+        logger.warning('No data given!')
         return {}
 
-    logging.info('Loading models...')
+    logger.info('Loading models...')
 
     processor = Wav2Vec2Processor.from_pretrained(w2v2_model)
     model = AutoModelForCTC.from_pretrained(w2v2_model).cuda()
@@ -104,26 +113,26 @@ def align(w2v2_model: str, audio: List[np.ndarray], text: List[str], ids: Option
 
     disable_caching()
 
-    logging.info("Loading data...")
+    logger.info("Loading data...")
 
     if not ids:
         ids = [f'audio_{x:04d}' for x in range(len(audio))]
 
     data = Dataset.from_dict({'id': ids, 'input_values': audio, 'ref': text}).with_format('np')
 
-    logging.info(f'Loaded {data.num_rows} files!')
+    logger.info(f'Loaded {data.num_rows} files!')
 
     def process_labels(batch):
         batch["labels"] = processor(text=batch["ref"]).input_ids
         batch["length"] = len(batch['input_values'])
         return batch
 
-    logging.info('Processing labels...')
+    logger.info('Processing labels...')
 
     data = data.map(process_labels)
 
     len_s = sum(data["length"]) / 16000
-    logging.info(f'Total audio length: {len_s:0.2f}s == {len_s / 60:0.2f}min == {len_s / 3600:0.2f}h')
+    logger.info(f'Total audio length: {len_s:0.2f}s == {len_s / 60:0.2f}min == {len_s / 3600:0.2f}h')
 
     def chunking(dataset):
         for sample in dataset:
@@ -134,11 +143,11 @@ def align(w2v2_model: str, audio: List[np.ndarray], text: List[str], ids: Option
                        'input_values': chunk['input_values'][0],
                        'attention_mask': chunk['attention_mask'][0]}
 
-    logging.info('Splitting data into chunks...')
+    logger.info('Splitting data into chunks...')
 
     chunks_in = Dataset.from_generator(chunking, gen_kwargs={'dataset': data})
 
-    logging.info(f'Divided into {chunks_in.num_rows} chunks!')
+    logger.info(f'Divided into {chunks_in.num_rows} chunks!')
 
     def process(batch):
         processed = processor.pad({'input_values': batch['input_values'], 'attention_mask': batch['attention_mask']},
@@ -149,13 +158,13 @@ def align(w2v2_model: str, audio: List[np.ndarray], text: List[str], ids: Option
 
         return {'logits': logits, 'stride': batch['stride']}
 
-    logging.info('Processing chunks using the W2V2 model...')
+    logger.info('Processing chunks using the W2V2 model...')
 
     chunks_out = chunks_in.map(process, batched=True, batch_size=batch_size)
 
     ratio = 1 / model.config.inputs_to_logits_ratio
 
-    logging.info('Merging chunks back into files...')
+    logger.info('Merging chunks back into files...')
 
     file_logits = {}
     for chunk in tqdm(chunks_out.sort('chunk_seq')):
@@ -174,18 +183,18 @@ def align(w2v2_model: str, audio: List[np.ndarray], text: List[str], ids: Option
                                  wl_id=word_delimiter_token_id, pad_id=pad_token_id)[0]
         return {'word_dur': word_lens}
 
-    logging.info('Performing forced alignment...')
+    logger.info('Performing forced alignment...')
 
     data_ali = data.map(process_alignment, batched=False)
 
-    logging.info('Saving output...')
+    logger.info('Saving output...')
 
     alignment = {}
     for file in data_ali:
         alignment[file['id']] = [{'text': t, 'timestamp': ts} for t, ts in
                                  zip(file['ref'].split(), file['word_dur'].tolist())]
 
-    logging.info('Done!')
+    logger.info('Done!')
 
     data.cleanup_cache_files()
     data_ali.cleanup_cache_files()
@@ -193,7 +202,7 @@ def align(w2v2_model: str, audio: List[np.ndarray], text: List[str], ids: Option
     chunks_out.cleanup_cache_files()
 
     took_s = time.time() - start_time
-    logging.info(f'Took {took_s:0.2f}s == {took_s / 60:0.2f}min == {took_s / 3600:0.2f}h')
+    logger.info(f'Took {took_s:0.2f}s == {took_s / 60:0.2f}min == {took_s / 3600:0.2f}h')
 
     return alignment
 
@@ -262,11 +271,14 @@ def convert_ali_to_segments(ali: List[Dict], reco: List[Word], sil_gap=2, max_le
         segs = sp_seg
 
     # create output list of dicts
-    ret = [{'text': ' '.join([x['text'] for x in seg]),
-            'norm': ' '.join([x['norm'] if 'norm' in x else x['text'] for x in seg]) if 'norm' in seg[0] else None,
-            'start': seg[0]['timestamp'][0],
-            'end': seg[-1]['timestamp'][1],
-            'chunks': [x['timestamp'] for x in seg],
+    ret = [{'norm': ' '.join([x['text'] for x in seg]),
+            'start': round(seg[0]['timestamp'][0], 3),
+            'end': round(seg[-1]['timestamp'][1], 3),
+            'words': [{
+                'time_s': x['timestamp'][0],
+                'time_e': x['timestamp'][1]
+            } for x in seg],
+            'reco_words': [],
             'reco': []} for seg in segs]
 
     # match reco segments to ali
@@ -288,16 +300,18 @@ def convert_ali_to_segments(ali: List[Dict], reco: List[Word], sil_gap=2, max_le
             err[op] += 1
         err['num'] = len(source)
         err['corr'] = err['num'] - err['delete'] - err['replace']
-        err['wer'] = (err['delete'] + err['insert'] + err['replace']) / err['num']
+        err['wer'] = round((err['delete'] + err['insert'] + err['replace']) / err['num'], 3)
         return err
 
     for seg in ret:
-        seg['reco'] = ' '.join([x.text for x in sorted(seg['reco'], key=lambda x: x.start)])
-        if seg['norm']:
-            seg['errors'] = get_errors(seg['norm'].split(), seg['reco'].split())
-        else:
-            seg['errors'] = get_errors(seg['text'].split(), seg['reco'].split())
-        seg['errors']['cer'] = get_errors(seg['text'], seg['reco'])['wer']
+        reco = sorted(seg['reco'], key=lambda x: x.start)
+        seg['reco'] = ' '.join([x.text for x in reco])
+        seg['reco_words'] = [{
+            'time_s': round(x.start, 3),
+            'time_e': round(x.end, 3)
+        } for x in reco]
+        seg['errors'] = get_errors(seg['norm'].split(), seg['reco'].split())
+        seg['errors']['cer'] = get_errors(seg['norm'], seg['reco'])['wer']
 
     # combine unaligned reco words into segments
     unaligned_reco = sorted(unaligned_reco, key=lambda x: x.start)
@@ -312,9 +326,13 @@ def convert_ali_to_segments(ali: List[Dict], reco: List[Word], sil_gap=2, max_le
     segs.append(seg)
 
     for seg in segs:
-        ret.append({'text': ' '.join([x.text for x in seg]),
-                    'start': seg[0].start,
-                    'end': seg[-1].end,
+        ret.append({'reco': ' '.join([x.text for x in seg]),
+                    'reco_words': [{
+                        'time_s': round(x.start, 3),
+                        'time_e': round(x.end, 3)
+                    } for x in seg],
+                    'start': round(seg[0].start, 3),
+                    'end': round(seg[-1].end, 3),
                     'unaligned': True})
 
     return sorted(ret, key=lambda x: x['start'])
@@ -333,8 +351,6 @@ if __name__ == '__main__':
     parser.add_argument('--batch-size', type=int, default=8)
 
     args = parser.parse_args()
-
-    logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 
     audio, fs = torchaudio.load(args.audio)
     audio = audio.flatten().numpy()
