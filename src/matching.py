@@ -268,13 +268,13 @@ def main():
     args = parser.parse_args()
 
     logger.info('Loading reco data...')
-    words = load_reco(args.words)
+    words = load_reco(args.reco_out)
 
-    if args.recoid not in words:
-        logger.error(f'Recording with id {args.recoid} is not present in the {args.words} file.')
+    if args.reco_id not in words:
+        logger.error(f'Recording with id {args.reco_id} is not present in the {args.reco_out} file.')
         return
 
-    words = words[args.recoid]
+    words = words[args.reco_id]
 
     logger.info('Loading transcript...')
     matcher = Matcher(args.transcript)
