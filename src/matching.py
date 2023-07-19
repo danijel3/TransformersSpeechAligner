@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Dict, Set, List, Tuple, Optional
 
 from Levenshtein import distance, opcodes
+from tqdm import tqdm
 
 from src.align import align, fix_times, convert_ali_to_segments
 from src.data_loaders import Word, load_audio, extract_audio, load_reco
@@ -165,7 +166,7 @@ class Matcher:
                 min_i = i - N
         return min_i, min_d
 
-    def _find_matching_seq(self, text: str, min_i: int) -> Tuple[Tuple[int, int], Tuple[int, int]]:
+    def _find_matching_seq(self, text: str, min_i: int) -> Optional[Tuple[Tuple[int, int], Tuple[int, int]]]:
         """
         Finds sequence in both reference and hypothesis that is a good match. Throws away any initial/final
         insertion/deletion and leaves the mathching middle.
@@ -176,6 +177,8 @@ class Matcher:
         text_ids = self.vocab.get_ids(text)
         N = int(len(text_ids))
         m = list(filter(lambda x: x[0] == 'equal', opcodes(text_ids, self.corpus[min_i:min_i + N])))
+        if not m:
+            return None
         hb = m[0][1]
         he = m[-1][2]
         rb = m[0][3]
@@ -192,8 +195,9 @@ class Matcher:
         logger.info('Loading audio...')
         audio = load_audio(audio_file)
 
+        logger.info('Making chunks...')
         chunk_num = ceil(len(words) / chunk_stride)
-        for c in range(chunk_num):
+        for c in tqdm(range(chunk_num)):
             cs = c * chunk_stride
             ce = cs + chunk_len
 
@@ -202,7 +206,12 @@ class Matcher:
 
             locs = self._initial_match(text)
             min_i, min_d = self._find_min_diff(locs, text)
-            (hb, he), (rb, re) = self._find_matching_seq(text, min_i)
+            if min_d / len(text) > 0.5:
+                continue
+            res = self._find_matching_seq(text, min_i)
+            if not res:
+                continue
+            (hb, he), (rb, re) = res
             ref_text, orig_text = self.get_corpus_chunk(min_i + rb, min_i + re)
 
             seg, mask = extract_audio(audio['input_values'], words_chunk[hb:he], audio['samp_freq'])
@@ -212,6 +221,9 @@ class Matcher:
             ali_ref_texts.append(ref_text)
             if orig_text:
                 ali_orig_texts.append(orig_text)
+
+        if not ali_segs:
+            return []
 
         logger.info('Aligning reference to audio...')
         ali_res = align(model, ali_segs, ali_ref_texts)
@@ -242,8 +254,8 @@ class Matcher:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('words', type=Path)
-    parser.add_argument('recoid', type=str)
+    parser.add_argument('reco_out', type=Path)
+    parser.add_argument('reco_id', type=str)
     parser.add_argument('audio', type=Path)
     parser.add_argument('transcript', type=Path)
     parser.add_argument('model', type=str)
