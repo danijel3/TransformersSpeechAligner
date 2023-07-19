@@ -33,6 +33,56 @@ the provided model and output its results to a JSON file. The second argument is
 given in the first argument, because that JSON file can contain multiple recordings and this script is used to process
 files one at a time.
 
+## Output file
+
+The final output JSON will contain the following fields:
+
+```json
+{
+  "id": "ID of utterance",
+  "text": "Original text as present in corpus.",
+  "norm": "normalized lowercased text without punctuation",
+  "reco": "ASR output",
+  "start": 0.0,
+  "end": 5.37,
+  "words": [
+    {
+      "time_s": 0.0,
+      "time_e": 0.5,
+      "char_s": 0,
+      "char_e": 5
+    },
+    {
+      "time_s": 0.6,
+      "time_e": 1.2,
+      "char_s": 6,
+      "char_e": 10
+    },
+    ...
+  ],
+  "reco_words": [
+    {
+      "time_s": 0.0,
+      "time_e": 0.45
+    },
+    {
+      "time_s": 0.52,
+      "time_e": 1.1
+    },
+    ...
+  ],
+  "errors": {
+    "delete": 0,
+    "insert": 1,
+    "replace": 2,
+    "num": 5,
+    "corr": 2,
+    "wer": 0.6,
+    "cer": 0.43
+  }
+}
+```
+
 ## Details
 
 To learn more about the internals of the procedure, please refer to the [Procedure.ipynb](Procedure.ipynb) notebook.
