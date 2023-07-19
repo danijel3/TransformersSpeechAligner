@@ -83,6 +83,10 @@ def align_logits(logits: List[np.ndarray], labels: List[List[int]],
 
 def align(w2v2_model: str, audio: List[np.ndarray], text: List[str], ids: Optional[List[str]] = None,
           chunk_len: float = 10, left_stride: float = 4, right_stride: float = 2, batch_size: int = 4) -> Dict:
+    if not audio:
+        logging.warning('No data given!')
+        return {}
+
     logging.info('Loading models...')
 
     processor = Wav2Vec2Processor.from_pretrained(w2v2_model)
@@ -228,14 +232,15 @@ def convert_ali_to_segments(ali: List[Dict], reco: List[Word], sil_gap=2, max_le
     '''
     # combine words into segments based on sil_gap
     segs = []
-    seg = [ali[0]]
-    for w in ali[1:]:
-        if w['timestamp'][0] - seg[-1]['timestamp'][1] > sil_gap:
-            segs.append(seg)
-            seg = [w]
-        else:
-            seg.append(w)
-    segs.append(seg)
+    if ali:
+        seg = [ali[0]]
+        for w in ali[1:]:
+            if w['timestamp'][0] - seg[-1]['timestamp'][1] > sil_gap:
+                segs.append(seg)
+                seg = [w]
+            else:
+                seg.append(w)
+        segs.append(seg)
 
     # split long segments (longer than max_len) into equal sub-segments
     if max_len and max_len > 0:
