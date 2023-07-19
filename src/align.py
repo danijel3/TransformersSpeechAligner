@@ -275,8 +275,8 @@ def convert_ali_to_segments(ali: List[Dict], reco: List[Word], sil_gap=2, max_le
             'start': round(seg[0]['timestamp'][0], 3),
             'end': round(seg[-1]['timestamp'][1], 3),
             'words': [{
-                'time_s': x['timestamp'][0],
-                'time_e': x['timestamp'][1]
+                'time_s': round(x['timestamp'][0], 3),
+                'time_e': round(x['timestamp'][1], 3)
             } for x in seg],
             'reco_words': [],
             'reco': []} for seg in segs]
