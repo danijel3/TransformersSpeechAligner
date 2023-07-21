@@ -227,6 +227,10 @@
         const segments = document.getElementById("segments");
         data.forEach((seg) => {
 
+            if (seg['start'] === 0 && seg['end'] === 0) {
+                return;
+            }
+
             let seg_el = document.createElement('div');
             seg_el.setAttribute('data-start', seg['start']);
             seg_el.setAttribute('data-end', seg['end']);
