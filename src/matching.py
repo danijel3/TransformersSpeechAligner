@@ -153,6 +153,15 @@ class Matcher:
         re = m[-1][4]
         return (hb, he), (rb, re)
 
+    def get_corpus_chunk(self, start: int, end: int) -> str:
+        """
+        Get a portion of the corpus as a string.
+        :param start: start index
+        :param end: end index
+        :return: text
+        """
+        return self.vocab.get_text(self.corpus[start:end])
+
     def run(self, words: List[Word], audio_file: Path, model: str,
             chunk_len: int = 200, chunk_stride: int = 200) -> List[Dict]:
         ali_segs = []
@@ -180,7 +189,7 @@ class Matcher:
             if not res:
                 continue
             (hb, he), (rb, re) = res
-            ref_text = self.vocab.get_text(self.corpus[min_i + rb:min_i + re])
+            ref_text = self.get_corpus_chunk(min_i + rb, min_i + re)
 
             seg, mask = extract_audio(audio['input_values'], words_chunk[hb:he], audio['samp_freq'])
 
@@ -224,7 +233,7 @@ class Matcher:
         return ret
 
 
-def convert_ali_to_corpus_lines(ali: List[Dict], reco: List[Dict], norm: List, sil_gap: float=2) -> List[Dict]:
+def convert_ali_to_corpus_lines(ali: List[Dict], reco: List[Dict], norm: List, sil_gap: float = 2) -> List[Dict]:
     norm_words = []
     segs = []
     for ln, l in enumerate(norm):
@@ -288,13 +297,13 @@ def convert_ali_to_corpus_lines(ali: List[Dict], reco: List[Dict], norm: List, s
 
     for seg in unaligned_segs:
         segs.append({'reco': ' '.join([x.text for x in seg]),
-                    'reco_words': [{
-                        'time_s': round(x.start, 3),
-                        'time_e': round(x.end, 3)
-                    } for x in seg],
-                    'start': round(seg[0].start, 3),
-                    'end': round(seg[-1].end, 3),
-                    'unaligned': True})
+                     'reco_words': [{
+                         'time_s': round(x.start, 3),
+                         'time_e': round(x.end, 3)
+                     } for x in seg],
+                     'start': round(seg[0].start, 3),
+                     'end': round(seg[-1].end, 3),
+                     'unaligned': True})
 
     return sorted(segs, key=lambda x: x['start'])
 
