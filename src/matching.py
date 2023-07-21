@@ -261,8 +261,11 @@ def convert_ali_to_corpus_lines(ali: List[Dict], reco: List[Dict], norm: List, s
             'char_s': x[1][0],
             'char_e': x[1][1],
         } for x in words]
-        s['start'] = s['words'][0]['time_s']
-        s['end'] = s['words'][-1]['time_e']
+        if len(s['words']) > 0:
+            s['start'] = s['words'][0]['time_s']
+            s['end'] = s['words'][-1]['time_e']
+        else:
+            s['start'] = s['end'] = 0
         s['w'] = []
 
     unaligned = []

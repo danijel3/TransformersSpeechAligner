@@ -234,6 +234,8 @@ def get_errors(source: Union[List[str], str], dest: Union[List[str], str]) -> Di
     for op, _, _ in editops(source, dest):
         err[op] += 1
     err['num'] = len(source)
+    if err['num'] == 0:
+        err['num'] = 1
     err['corr'] = err['num'] - err['delete'] - err['replace']
     err['wer'] = round((err['delete'] + err['insert'] + err['replace']) / err['num'], 3)
     return err
