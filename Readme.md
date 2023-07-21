@@ -54,12 +54,14 @@ python -m src.normalize [transcript.txt] [transcript.json]
 The file will have the following format:
 
 ```json
-{
+[{
   "id": "ID of utterance",
   "text": "Original text as present in corpus.",
   "norm": "normalized lowercased text without punctuation",
   "normoff": [[0, 5], [6, 10], ...]
-}
+},
+...
+]
 ```
 The `normoff` field contains for each normalized word a list of character offsets within the original text.
 
