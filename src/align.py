@@ -229,6 +229,16 @@ def save_ali_to_textgrid(file: Path, ali: List[Dict]):
     tg.to_file(str(file))
 
 
+def get_errors(source: Union[List[str], str], dest: Union[List[str], str]) -> Dict:
+    err = {'delete': 0, 'insert': 0, 'replace': 0}
+    for op, _, _ in editops(source, dest):
+        err[op] += 1
+    err['num'] = len(source)
+    err['corr'] = err['num'] - err['delete'] - err['replace']
+    err['wer'] = round((err['delete'] + err['insert'] + err['replace']) / err['num'], 3)
+    return err
+
+
 def convert_ali_to_segments(ali: List[Dict], reco: List[Word], sil_gap=2, max_len=-1) -> List[Dict]:
     '''
     Converts alignment as a list of words to a list of segments. Also matches the reco words to alignment and computes
@@ -292,16 +302,6 @@ def convert_ali_to_segments(ali: List[Dict], reco: List[Word], sil_gap=2, max_le
                 break
         if not found:
             unaligned_reco.append(w)
-
-    # compute errors
-    def get_errors(source: Union[List[str], str], dest: Union[List[str], str]) -> Dict:
-        err = {'delete': 0, 'insert': 0, 'replace': 0}
-        for op, _, _ in editops(source, dest):
-            err[op] += 1
-        err['num'] = len(source)
-        err['corr'] = err['num'] - err['delete'] - err['replace']
-        err['wer'] = round((err['delete'] + err['insert'] + err['replace']) / err['num'], 3)
-        return err
 
     for seg in ret:
         reco = sorted(seg['reco'], key=lambda x: x.start)
