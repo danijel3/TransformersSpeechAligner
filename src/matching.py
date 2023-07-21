@@ -11,7 +11,7 @@ from typing import Dict, Set, List, Tuple, Optional
 from Levenshtein import distance, opcodes
 from tqdm import tqdm
 
-from src.align import align, fix_times, convert_ali_to_segments
+from src.align import align, fix_times, convert_ali_to_segments, get_errors
 from src.data_loaders import Word, load_audio, extract_audio, load_reco
 
 logging.basicConfig(
@@ -78,47 +78,15 @@ class Matcher:
     This class loads a large text corpus and allows matching short text segments to it.
     '''
 
-    def __init__(self, corpus: Path):
-        lines = []
-        orig_lines = None
-        self.unnorm = None
+    def __init__(self, word_seq: List[str]):
         self.corpus = []
-        words = set()
+
         self.vocab = Dictionary()
-        try:
-            with open(corpus) as f:
-                ali = json.load(f)
-            orig_lines = []
-            for l in ali:
-                lines.append(l[1])
-                orig_lines.append(l[0])
-                words.update(l[0])
-                words.update(l[1])
 
-        except JSONDecodeError:
-            with open(corpus) as f:
-                for l in f:
-                    tok = l.strip().split()
-                    lines.append(tok)
-                    words.update(tok)
+        self.vocab.put(set(word_seq))
 
-        self.vocab.put(words)
-
-        for l in lines:
-            for w in l:
-                self.corpus.append(self.vocab.get_id(w))
-        if orig_lines:
-            self.unnorm = []
-            for l in orig_lines:
-                for w in l:
-                    self.unnorm.append(self.vocab.get_id(w))
-
-    def get_corpus_chunk(self, start: int, end: int) -> Tuple[str, Optional[str]]:
-        norm = self.vocab.get_text(self.corpus[start:end])
-        orig = None
-        if self.unnorm:
-            orig = self.vocab.get_text(self.unnorm[start:end])
-        return norm, orig
+        for w in word_seq:
+            self.corpus.append(self.vocab.get_id(w))
 
     def _initial_match(self, text: str, threshold: float = 0.9) -> List[Tuple[int, float]]:
         """
@@ -190,7 +158,7 @@ class Matcher:
         ali_segs = []
         ali_masks = []
         ali_ref_texts = []
-        ali_orig_texts = []
+        ali_ref_pos = []
 
         logger.info('Loading audio...')
         audio = load_audio(audio_file)
@@ -212,35 +180,39 @@ class Matcher:
             if not res:
                 continue
             (hb, he), (rb, re) = res
-            ref_text, orig_text = self.get_corpus_chunk(min_i + rb, min_i + re)
+            ref_text = self.vocab.get_text(self.corpus[min_i + rb:min_i + re])
 
             seg, mask = extract_audio(audio['input_values'], words_chunk[hb:he], audio['samp_freq'])
 
             ali_segs.append(seg)
             ali_masks.append(mask)
             ali_ref_texts.append(ref_text)
-            if orig_text:
-                ali_orig_texts.append(orig_text)
+            ali_ref_pos.append((min_i + rb, min_i + re))
 
-        if not ali_segs:
+        if not ali_segs:  # TODO this eats up too much words sometimes
             return []
 
-        logger.info('Aligning reference to audio...')
-        ali_res = align(model, ali_segs, ali_ref_texts)
+        ali_dbg = Path('data/ali_dbg.json')
+        if ali_dbg.exists():
+            logger.info('Loading ali from dbg...')
+            ali_res = json.load(ali_dbg.open('r'))
+        else:
+            logger.info('Aligning reference to audio...')
+            ali_res = align(model, ali_segs, ali_ref_texts)
+            with open(ali_dbg, 'w') as f:
+                json.dump(ali_res, f)
+
+        for ali, pos in zip(ali_res.values(), ali_ref_pos):
+            for w, p in zip(ali, range(pos[0], pos[1])):
+                w['ref_pos'] = p
 
         logger.info('Fixing times...')
         ali_all = []
-        if len(ali_orig_texts) > 0:
-            for ali_words, mask, orig in zip(ali_res.values(), ali_masks, ali_orig_texts):
-                ali_fixed = fix_times(ali_words, mask, audio['samp_freq'])
-                for w, o in zip(ali_fixed, orig.split()):
-                    w['norm'] = w['text']
-                    w['text'] = o
-                ali_all.extend(ali_fixed)
-        else:
-            for ali_words, mask in zip(ali_res.values(), ali_masks):
-                ali_fixed = fix_times(ali_words, mask, audio['samp_freq'])
-                ali_all.extend(ali_fixed)
+        for ali_words, mask in zip(ali_res.values(), ali_masks):
+            ali_fixed = fix_times(ali_words, mask, audio['samp_freq'])
+            for a, w in zip(ali_fixed, ali_words):
+                a['ref_pos'] = w['ref_pos']
+            ali_all.extend(ali_fixed)
 
         logger.info('Removing overlapping words...')
         ali_all = sorted(ali_all, key=lambda x: x['timestamp'][0])
@@ -250,6 +222,81 @@ class Matcher:
                 ret.append(x)
 
         return ret
+
+
+def convert_ali_to_corpus_lines(ali: List[Dict], reco: List[Dict], norm: List, sil_gap: float=2) -> List[Dict]:
+    norm_words = []
+    segs = []
+    for ln, l in enumerate(norm):
+        segs.append({
+            'id': l['uid'],
+            'text': l['text'],
+            'w': []
+        })
+        for n in l['normoff']:
+            norm_words.append((ln, n))
+
+    for w in ali:
+        ln, n = norm_words[w['ref_pos']]
+        segs[ln]['w'].append((w, n))
+
+    for s in segs:
+        words = sorted(s['w'], key=lambda x: x[0]['timestamp'][0])
+        s['norm'] = ' '.join([x[0]['text'] for x in words])
+        s['words'] = [{
+            'time_s': round(x[0]['timestamp'][0], 3),
+            'time_e': round(x[0]['timestamp'][1], 3),
+            'char_s': x[1][0],
+            'char_e': x[1][1],
+        } for x in words]
+        s['start'] = s['words'][0]['time_s']
+        s['end'] = s['words'][-1]['time_e']
+        s['w'] = []
+
+    unaligned = []
+    for w in reco:
+        for s in segs:
+            mp = (w.start + w.end) / 2
+            if s['start'] <= mp <= s['end']:
+                s['w'].append(w)
+                break
+        else:
+            unaligned.append(w)
+
+    for s in segs:
+        words = sorted(s['w'], key=lambda x: x.start)
+        s['reco'] = ' '.join([x.text for x in words])
+        s['reco_words'] = [{
+            'time_s': round(x.start, 3),
+            'time_e': round(x.end, 3),
+        } for x in words]
+        s.pop('w')
+        s['errors'] = get_errors(s['norm'].split(), s['reco'].split())
+        s['errors']['cer'] = get_errors(s['norm'], s['reco'])['wer']
+
+        # combine unaligned reco words into segments
+    unaligned = sorted(unaligned, key=lambda x: x.start)
+    unaligned_segs = []
+    seg = [unaligned[0]]
+    for w in unaligned[1:]:
+        if w.start - seg[-1].end > sil_gap:
+            unaligned_segs.append(seg)
+            seg = [w]
+        else:
+            seg.append(w)
+    unaligned_segs.append(seg)
+
+    for seg in unaligned_segs:
+        segs.append({'reco': ' '.join([x.text for x in seg]),
+                    'reco_words': [{
+                        'time_s': round(x.start, 3),
+                        'time_e': round(x.end, 3)
+                    } for x in seg],
+                    'start': round(seg[0].start, 3),
+                    'end': round(seg[-1].end, 3),
+                    'unaligned': True})
+
+    return sorted(segs, key=lambda x: x['start'])
 
 
 def main():
@@ -276,17 +323,36 @@ def main():
 
     words = words[args.reco_id]
 
+    word_seq = []
+    norm = None
+    try:  # try and treat the input transcript as JSON file
+        with open(args.transcript) as f:
+            norm = json.load(f)
+            for l in norm:
+                tok = l['norm'].strip().split()
+                word_seq.extend(tok)
+
+    except JSONDecodeError:  # if it fails read it as a normal text file
+        with open(args.transcript) as f:
+            for l in f:
+                tok = l.strip().split()
+                word_seq.extend(tok)
+
     logger.info('Loading transcript...')
-    matcher = Matcher(args.transcript)
+    matcher = Matcher(word_seq)
 
     logger.info('Matching reco and transcript...')
     ali = matcher.run(words, args.audio, args.model, args.chunk_len, args.chunk_stride)
 
-    logger.info('Grouping segments...')
-    segs = convert_ali_to_segments(ali, words, args.sil_gap, args.max_len)
+    if norm:
+        logger.info('Organizing tokens by corpus lines...')
+        segs = convert_ali_to_corpus_lines(ali, words, norm)
+    else:
+        logger.info('Grouping segments...')
+        segs = convert_ali_to_segments(ali, words, args.sil_gap, args.max_len)
 
     with open(args.output, 'w') as f:
-        json.dump(segs, f)
+        json.dump(segs, f, indent=2)
 
 
 if __name__ == '__main__':
