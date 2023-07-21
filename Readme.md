@@ -25,7 +25,7 @@ python -m src.recognize_vad [audio file(s)] [vad.json] [model name or path] [rec
 2. Match the ASR output to a transcript:
 
 ```bash
-python -m src.matching [reco.json] [reco ID] [transcript.txt] [model name or path] [output.json]
+python -m src.matching [reco.json] [reco ID] [audio file] [transcript.txt] [model name or path] [output.json]
 ```
 
 This will perform a fuzzy match of the ASR output to the transcript then re-align the matched text to the audio using
@@ -33,7 +33,43 @@ the provided model and output its results to a JSON file. The second argument is
 given in the first argument, because that JSON file can contain multiple recordings and this script is used to process
 files one at a time.
 
-## Output file
+## Parlamint corpus procedure
+
+The difference here is that the text in the corpus is not normalized and each line is prefixed by an ID. We want to both
+normalize the text, but also keep the alignment with the original text and group words according to the original lines
+and their IDs.
+
+1. Recognize the audio (like above):
+
+```bash
+python -m src.recognize [audio file(s)] [model name or path] [reco.json]
+```
+
+2. Normalize the text to a JSON format:
+
+```bash
+python -m src.normalize [transcript.txt] [transcript.json]
+```
+
+The file will have the following format:
+
+```json
+{
+  "id": "ID of utterance",
+  "text": "Original text as present in corpus.",
+  "norm": "normalized lowercased text without punctuation",
+  "normoff": [[0, 5], [6, 10], ...]
+}
+```
+The `normoff` field contains for each normalized word a list of character offsets within the original text.
+
+3. Match the ASR output to the transcript (again same as before):
+
+```bash
+python -m src.matching_parlamint [reco.json] [reco ID] [audio file] [transcript.json] [model name or path] [output.json]
+```
+
+### Output file
 
 The final output JSON will contain the following fields:
 
