@@ -201,15 +201,18 @@ class Matcher:
         if not ali_segs:  # TODO this eats up too much words sometimes
             return []
 
-        ali_dbg = Path('data/ali_dbg.json')
-        if ali_dbg.exists():
-            logger.info('Loading ali from dbg...')
-            ali_res = json.load(ali_dbg.open('r'))
-        else:
-            logger.info('Aligning reference to audio...')
-            ali_res = align(model, ali_segs, ali_ref_texts)
-            with open(ali_dbg, 'w') as f:
-                json.dump(ali_res, f)
+        # ali_dbg = Path('data/ali_dbg.json')
+        # if ali_dbg.exists():
+        #     logger.info('Loading ali from dbg...')
+        #     ali_res = json.load(ali_dbg.open('r'))
+        # else:
+        #     logger.info('Aligning reference to audio...')
+        #     ali_res = align(model, ali_segs, ali_ref_texts)
+        #     with open(ali_dbg, 'w') as f:
+        #         json.dump(ali_res, f)
+        #
+        logger.info('Aligning reference to audio...')
+        ali_res = align(model, ali_segs, ali_ref_texts)
 
         for ali, pos in zip(ali_res.values(), ali_ref_pos):
             for w, p in zip(ali, range(pos[0], pos[1])):
