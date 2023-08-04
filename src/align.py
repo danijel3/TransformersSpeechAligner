@@ -207,9 +207,10 @@ def align(w2v2_model: str, audio: List[np.ndarray], text: List[str], ids: Option
     return alignment
 
 
-def fix_times(ali: List[Dict], mask: np.ndarray, samp_freq: float):
+def fix_times(ali: List[Dict], mask: np.ndarray, mask_off: int, samp_freq: float):
     ret = []
     times = np.cumsum(mask) / samp_freq
+    mask_off = mask_off / samp_freq
     for seg in ali:
         start = seg['timestamp'][0]
         if start == 0:
@@ -217,7 +218,7 @@ def fix_times(ali: List[Dict], mask: np.ndarray, samp_freq: float):
         end = seg['timestamp'][1]
         dur = end - start
         fix = np.searchsorted(times, start) / samp_freq
-        ret.append({'text': seg['text'], 'timestamp': [fix, fix + dur]})
+        ret.append({'text': seg['text'], 'timestamp': [fix + mask_off, fix + dur + mask_off]})
     return ret
 
 

@@ -166,6 +166,7 @@ class Matcher:
             chunk_len: int = 200, chunk_stride: int = 200) -> List[Dict]:
         ali_segs = []
         ali_masks = []
+        ali_masks_off = []
         ali_ref_texts = []
         ali_ref_pos = []
 
@@ -191,10 +192,11 @@ class Matcher:
             (hb, he), (rb, re) = res
             ref_text = self.get_corpus_chunk(min_i + rb, min_i + re)
 
-            seg, mask = extract_audio(audio['input_values'], words_chunk[hb:he], audio['samp_freq'])
+            seg, mask, mask_off = extract_audio(audio['input_values'], words_chunk[hb:he], audio['samp_freq'])
 
             ali_segs.append(seg)
             ali_masks.append(mask)
+            ali_masks_off.append(mask_off)
             ali_ref_texts.append(ref_text)
             ali_ref_pos.append((min_i + rb, min_i + re))
 
@@ -210,7 +212,7 @@ class Matcher:
         #     ali_res = align(model, ali_segs, ali_ref_texts)
         #     with open(ali_dbg, 'w') as f:
         #         json.dump(ali_res, f)
-        #
+
         logger.info('Aligning reference to audio...')
         ali_res = align(model, ali_segs, ali_ref_texts)
 
@@ -220,8 +222,8 @@ class Matcher:
 
         logger.info('Fixing times...')
         ali_all = []
-        for ali_words, mask in zip(ali_res.values(), ali_masks):
-            ali_fixed = fix_times(ali_words, mask, audio['samp_freq'])
+        for ali_words, mask, mask_off in zip(ali_res.values(), ali_masks, ali_masks_off):
+            ali_fixed = fix_times(ali_words, mask, mask_off, audio['samp_freq'])
             for a, w in zip(ali_fixed, ali_words):
                 a['ref_pos'] = w['ref_pos']
             ali_all.extend(ali_fixed)
