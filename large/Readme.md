@@ -164,12 +164,60 @@ the output of the matching and Viterbi alignment to the original form of the tra
 
 ### Estimate N-gram
 
+In order to improve the performance of the speech recognition in the CTC decoding step, we
+can use a language model trained on the transcripts of the dataset and any other additional
+in-domain data.
+
+We choose to perform this step only once on the entire dataset, because this gives us better
+estimates of individual n-grams and allows for more lenient approach to matching transcripts
+to audio.
+
 ### CTC decoding
+
+This step uses a CTC decoder to perform automatic speech recognition of the logits acquired
+in the first step. The purpose of this step is to get the initial transcript of the audio,
+together with word timestamps, which we can then use to align to the reference transcript described
+in the next step.
 
 ### Matching
 
+The purpose of this step is to find matches between the reference transcript and the output of
+automatic speech recognition performed above. This step uses a series of heuristics to find the
+most likely match and is the core part of the whole pipeline. If anything doesn't work as expected,
+it is most likely due to this step.
+
 ### Viterbi
+
+Once we have the rough matches between the reference and the recognition output, we can the use Viterbi
+forced alignment to get the exact word timestamps of the reference transcript within audio.
 
 ### Re-segmeting
 
-## Sample performance
+Finally, we can reorganize the output of the alignment to match the organization of the original corpus.
+We want to match the aligned words to how they were divided into utterances in the original corpus. We also
+want to add ASR output to it and compute several additional bits of data along the way.
+
+The final output contains a list of corpus uterances with the following fields:
+
+1. `id` - ID of utterance from the original corpus
+2. `text` - original text as present in the corpus - the whole utterance
+3. `norm` - normalized version of the corpus text - this contains only the portion of the utterance that was matched
+   correctly
+4. `words` - time alignment of `text` and `norm`:
+   1. `time_s` and `time_e` - start and end time of the `norm` words in seconds
+   2. `char_s` and `char_e` - start and end character index within `text` that matches the particular `norm` word
+5. `start` and `end` - start and end time of the whole utterance in seconds
+6. `reco` - output of the ASR process
+7. `reco_words` - time alignment of `reco` text:
+   1. `time_s` and `time_e` - start and end time of the `reco` words in seconds
+8. `errors` - some error stats between `reco` and `norm` including Word Error Rate (WER) and Character Error Rate (CER)
+9. `match_error` - denotes if there is an error in the matching process and what kind:
+    * `none` - no error, so match was successful
+    * `only in reco` - this segment contains words that were recognized in the ASR process, but were not matched to
+      anything in the reference transcript
+    * `only in refernce` - this segment contains words that were present in the reference transcript, but were not found
+      in the audio
+
+The segments that contain match errors will skip fields that don't make sense in that context. For example, if the
+error is `only in reco`, then the segment will contain only `reco` and `reco_words` fields. If the error is `only in
+reference`, then the segment will contain only `text` and `words` fields and no time information.
