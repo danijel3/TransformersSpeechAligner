@@ -1,0 +1,59 @@
+@startuml
+
+circle "Normalized\ntext"
+circle Logits
+circle "Speech\nsegments"
+circle LM
+circle "Reco\ntext"
+circle "Segment\nalignment"
+circle "Word\nalignment"
+
+rectangle "CTC decoding"
+rectangle Normalization
+rectangle "Estimate n-gram"
+rectangle Matching
+rectangle Viterbi
+rectangle "Re-segmenting"
+
+rectangle "run once for all files" as LMnote #line.dashed
+
+rectangle GPU {
+    rectangle VAD
+    rectangle W2V2
+}
+
+rectangle "Input Data" {
+    circle "Reference text"
+    circle Audio
+}
+
+rectangle "Output Data" {
+    circle JSON
+}
+
+Audio --> W2V2
+W2V2 --> Logits
+Audio --> VAD
+VAD --> "Speech\nsegments"
+Logits -> "CTC decoding"
+"Reference text" --> Normalization
+Normalization --> "Normalized\ntext"
+"Normalized\ntext" --> "Estimate n-gram"
+"Estimate n-gram" --> LM
+LMnote .. "Estimate n-gram"
+LM --> "CTC decoding"
+"Speech\nsegments" -> "CTC decoding"
+"CTC decoding" -> "Reco\ntext"
+"Normalized\ntext" --> Matching
+"Reco\ntext" -> Matching
+Matching --> "Segment\nalignment"
+"Segment\nalignment" --> Viterbi
+Logits -> Viterbi
+Viterbi -> "Word\nalignment"
+"Word\nalignment" -> "Re-segmenting"
+"Reco\ntext" -> "Re-segmenting"
+"Reference text" --> "Re-segmenting"
+"Normalized\ntext" --> "Re-segmenting"
+"Re-segmenting" ---> JSON
+
+@enduml
