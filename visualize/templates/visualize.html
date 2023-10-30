@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+<div id="player--container">
+    <audio id="player" controls style="width:90%">
+        <source src="/audio">
+    </audio>
+
+    <div id="scroll" onclick="scroll_into_view()">&#x2316;</div>
+
+</div>
+
+<div id="legend">
+    <span class="wer">word error rate %</span>
+    <span class="text">Corpus text</span>
+    <span class="norm">Normalized text</span>
+    <span class="reco">Reco text</span>
+</div>
+
+<div id="segments--container">
+
+    {% for seg in annotations %}
+
+        <div class="seg--item">
+            <div class="seg--tools">
+                {% if seg['match_error'] %}
+                    <span class="match-error">{{ seg['match_error'] }}</span>
+                {% else %}
+                    <span class="match-error ok">match OK</span>
+                {% endif %}
+                {% if 'start' in seg %}
+                    <button onclick="play({{ seg['start'] }},{{ seg['end'] }})">&#9658;</button>
+                {% endif %}
+                {% if 'id' in seg %}
+                    <div class="seg-id " data-id="{{ seg['id'] }}"
+                         onclick="navigator.clipboard.writeText('{{ seg['id'] }}')">&#x1F194;
+                    </div>
+                {% endif %}
+                {% if 'errors' in seg %}
+                    <div class="wer">{{ '%0.2f'|format(seg['errors']['wer']*100) }}%</div>
+                {% endif %}
+            </div>
+
+            <div class="seg--data" onmouseenter="make_selected(this)" data-start="{{ seg['start'] }}"
+                 data-end="{{ seg['end'] }}">
+                {%- if 'text' in seg %}
+                    <div class="text">
+                        {{ seg['text'] }}
+                    </div>
+                {%- endif %}
+                {%- if 'norm' in seg %}
+                    <div class="norm">
+                        {{ seg['norm'] }}
+                    </div>
+                {%- endif %}
+                {%- if 'reco' in seg %}
+                    <div class="reco">
+                        {{ seg['reco'] }}
+                    </div>
+                {%- endif %}
+                {%- if 'words' in seg %}
+                    <words>
+                        {%- for word in seg['words'] %}
+                            <word t-s="{{ word['time_s'] }}" t-e="{{ word['time_e'] }}" c-s="{{ word['char_s'] }}"
+                                  c-e="{{ word['char_e'] }}" i="{{ loop.index0 }}"></word>
+                        {%- endfor %}
+                    </words>
+                {%- endif %}
+                {%- if 'reco_words' in seg %}
+                    <reco-words>
+                        {%- for word in seg['reco_words'] %}
+                            <word t-s="{{ word['time_s'] }}" t-e="{{ word['time_e'] }}" i="{{ loop.index0 }}"></word>
+                        {%- endfor %}
+                    </reco-words>
+                {%- endif %}
+            </div>
+        </div>
+
+    {%- endfor %}
+</div>
+
+<script src="{{ url_for('static',filename = 'scripts.js') }}"></script>
+
+</body>
+</html>
