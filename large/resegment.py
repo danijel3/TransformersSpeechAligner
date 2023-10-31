@@ -155,7 +155,7 @@ if __name__ == '__main__':
             for i, w in enumerate(s['text'].split()):
                 reco.append({'text': w, 'start': s['words'][i]['start'], 'end': s['words'][i]['end']})
 
-    with open(args.json) as f:
+    with open(args.norm) as f:
         norm = json.load(f)
 
     segs = convert_ali_to_corpus_lines(ali, reco, norm)
