@@ -48,15 +48,16 @@ def viterbi(logits: np.ndarray, labels: np.ndarray, pad_id: int = 0) -> Tuple[Li
         end = np.clip(t + 1, 0, N)
 
         r = np.arange(beg, end)
+        ra = np.clip(r, 1, N - 1)
 
-        a[r] = delta[t - 1][r - 1]
+        a[ra] = delta[t - 1][ra - 1]
         b[r] = delta[t - 1][r]
 
         o[r] = logits[t][labels[r]]
         opad = logits[t][pad_id]
 
         m = np.zeros(N, dtype=bool)
-        m[r] = (a > b)[r]
+        m[ra] = (a > b)[ra]
         delta[t][m] = a[m] + o[m]
         psi[t][m] = M[m] - 1
 
