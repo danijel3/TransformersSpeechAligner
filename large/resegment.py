@@ -95,37 +95,37 @@ def convert_ali_to_corpus_lines(ali: List[Dict], reco: List[Dict], norm: List[Di
         unaligned_segs.append(seg)
 
     # add unaligned segments to final segments list
+    reco_segs = []
     for seg in unaligned_segs:
-        segs.append({'reco': ' '.join([x['text'] for x in seg]),
-                     'reco_words': [{
-                         'time_s': round(x['start'], 3),
-                         'time_e': round(x['end'], 3)
-                     } for x in seg],
-                     'start': round(seg[0]['start'], 3),
-                     'end': round(seg[-1]['end'], 3),
-                     'match_error': 'only in reco'})
+        reco_segs.append({'reco': ' '.join([x['text'] for x in seg]),
+                          'reco_words': [{
+                              'time_s': round(x['start'], 3),
+                              'time_e': round(x['end'], 3)
+                          } for x in seg],
+                          'start': round(seg[0]['start'], 3),
+                          'end': round(seg[-1]['end'], 3),
+                          'match_error': 'only in reco'})
 
     for seg in segs:
         if 'norm' not in segs and 'match_error' not in seg:
             seg['match_error'] = 'only in reference'
             seg.pop('w')
 
-    segs = sorted(segs, key=lambda x: x['start'] if 'start' in x else 0)
+    def key(x):
+        t = x['id'].split('.')
+        return t[0], int(t[1][1:])
 
-    lk = ''
-    for s in segs:
-        if 'id' in s:
-            s['k'] = s['id']
-            lk = s['id']
-        else:
-            s['k'] = lk
-        s['k'] = s['k'].split('.')
-        s['k'][1] = int(s['k'][1][1:])
+    segs = sorted(segs, key=key)
 
-    segs = sorted(segs, key=lambda x: x['k'])
-
-    for s in segs:
-        s.pop('k')
+    for rs in reco_segs:
+        added = False
+        for i, s in enumerate(segs):
+            if 'start' in s and s['start'] > rs['start']:
+                segs.insert(i, rs)
+                added = True
+                break
+        if not added:
+            segs.append(rs)
 
     for s in segs:
         if 'reco' in s and 'norm' in s:
