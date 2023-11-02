@@ -166,11 +166,15 @@ class Matcher:
             words_chunk = words[cs:ce]
             text = ' '.join([x.text for x in words_chunk])
 
+            # print("Text: ", text)
+
             locs = self._initial_match(text)
             min_i, min_d = self._find_min_diff(locs, text)
-            if min_d / len(text) > 0.5:
+            # print("Min diff: ", min_d, len(text), min_d / len(text))
+            if min_d / len(text) > 0.4:
                 continue
             res = self._find_matching_seq(text, min_i)
+            # print("Match: ", res)
             if not res:
                 continue
             (hb, he), (rb, re) = res
@@ -182,6 +186,57 @@ class Matcher:
             ret.append({'ref_text': ref_text, 'ref_offset': {'start': min_i + rb, 'end': min_i + re},
                         'reco_text': reco_text, 'reco_offset': {'start': cs + hb, 'end': cs + he},
                         'audio_offsets': [(x.start, x.end) for x in reco_words]})
+
+        for mp, mn in zip(ret[:-1], ret[1:]):
+            reco_off_start = mp['reco_offset']['end']
+            reco_off_end = mn['reco_offset']['start']
+            if reco_off_end <= reco_off_start:
+                continue
+            reco_words = words[reco_off_start:reco_off_end]
+            reco_text = ' '.join([x.text for x in reco_words])
+            ref_off_start = mp['ref_offset']['end']
+            ref_off_end = mn['ref_offset']['start']
+            if ref_off_end <= ref_off_start:
+                continue
+            ref_text = self.get_corpus_chunk(ref_off_start, ref_off_end)
+            cer = distance(reco_text, ref_text) / len(ref_text)
+            if cer < 1.5:
+                ret.append({'ref_text': ref_text, 'ref_offset': {'start': ref_off_start, 'end': ref_off_end},
+                            'reco_text': reco_text, 'reco_offset': {'start': reco_off_start, 'end': reco_off_end},
+                            'audio_offsets': [(x.start, x.end) for x in reco_words]})
+
+        ret = sorted(ret, key=lambda x: x['audio_offsets'][0][0])
+
+        if ret[0]['reco_offset']['start'] > 0:
+            reco_off_end = ret[0]['reco_offset']['start']
+            reco_words = words[:reco_off_end]
+            reco_text = ' '.join([x.text for x in reco_words])
+
+            ref_off_end = ret[0]['ref_offset']['start']
+            ref_off_start = ref_off_end - reco_off_end - 5
+            if ref_off_start < 0:
+                ref_off_start = 0
+            ref_text = self.get_corpus_chunk(ref_off_start, ref_off_end)
+            ref_words = ref_text.split()
+
+            eq = list(filter(lambda x: x[0] == 'equal', opcodes(reco_text.split(), ref_text.split())))
+
+            for e in eq:
+                reco_subwords = reco_words[e[1]:e[2]]
+                ref_subwords = ref_words[e[3]:e[4]]
+
+                reco_sub_text = ' '.join([x.text for x in reco_subwords])
+                ref_sub_text = ' '.join(ref_subwords)
+
+                ret.append({'ref_text': ref_sub_text,
+                            'ref_offset': {'start': ref_off_start + e[3], 'end': ref_off_start + e[4]},
+                            'reco_text': reco_sub_text, 'reco_offset': {'start': e[1], 'end': e[2]},
+                            'audio_offsets': [(x.start, x.end) for x in reco_subwords]})
+
+        ret = sorted(ret, key=lambda x: x['audio_offsets'][0][0])
+
+        for s in ret:
+            s['cer'] = distance(s['reco_text'], s['ref_text']) / len(s['ref_text'])
 
         return ret
 
@@ -212,3 +267,14 @@ if __name__ == '__main__':
 
     with open(args.out, 'w') as f:
         json.dump(ret, f, indent=4)
+
+    ret = sorted(ret, key=lambda x: x['cer'], reverse=True)
+
+    if ret[0]['cer'] > 0.5:
+        print("WARNING: there are segments that have higher than 50% error rate!")
+
+    print('List of 10 worst segments:')
+    for i in range(10):
+        print(f'CER: {ret[i]["cer"]:0.2%}')
+        print('REF: ', ret[i]['ref_text'])
+        print('RECO: ', ret[i]['reco_text'])

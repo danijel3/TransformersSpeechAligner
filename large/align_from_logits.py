@@ -40,7 +40,7 @@ def align(match: List, logits: np.ndarray, vps: float = 50, pad_token_id: int = 
         ls = 0
         wc = 0
         for t, p in enumerate(bestpath):
-            if labels[p] == word_delimiter_token_id:
+            if p >= 0 and labels[p] == word_delimiter_token_id:
                 if t > ls:
                     start = ls / vps
                     end = t / vps
