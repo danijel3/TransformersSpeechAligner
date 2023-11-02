@@ -40,8 +40,28 @@ body {
     margin-top: 9rem;
     background-color: #eee;
     border: 1px dashed black;
-    margin-bottom: 2em;
     gap: 1rem;
+}
+
+#stats {
+    display: flex;
+    flex-direction: row;
+    justify-content: left;
+    gap: 1rem;
+    margin: 0.5em;
+    padding: 0.5em;
+    background-color: #eee;
+    border: 1px dashed black;
+}
+
+#stats .stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+#stats .stat--key {
+    font-weight: bold;
 }
 
 #segments--container {

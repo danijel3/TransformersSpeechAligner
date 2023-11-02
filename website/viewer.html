@@ -113,8 +113,16 @@
 <body>
 
 <div id="player--container">
+    <div id="file--container">
+        <input type="file" id="input" multiple accept="audio/*,.json"/>
+        <label for="audio_file_name">Audio File</label>
+        <output id="audio_file_name">??</output>
+        <label for="ali_file_name">Alignemnt File</label>
+        <output id="ali_file_name">??</output>
+    </div>
+
     <audio id="player" controls style="width:90%">
-        <source src="audio.mp3">
+        <source src="#">
     </audio>
 </div>
 
@@ -129,187 +137,212 @@
 </div>
 
 <script>
+    const input = document.getElementById('input');
     const player = document.getElementById('player');
-    const urlParams = new URLSearchParams(window.location.search);
-    player.src = urlParams.get('audio');
+    const audio_file_name = document.getElementById('audio_file_name');
+    const ali_file_name = document.getElementById('ali_file_name');
+    const segments = document.getElementById('segments');
 
-    let pause_after = -1;
-    setInterval(() => {
-        if (pause_after > 0 && player.currentTime > pause_after) {
-            player.pause();
-            pause_after = -1;
+    input.onchange = () => {
+
+        let audio_file = null;
+        let ali_file = null;
+
+        Array.from(input.files).forEach((file) => {
+            if (file.type.startsWith('audio')) {
+                audio_file = file;
+            } else if (file.type.startsWith('application/json')) {
+                ali_file = file;
+            }
+        });
+
+        if (audio_file === null || ali_file === null) {
+            alert('Please select both audio and alignment file');
+            return;
         }
-    }, 100);
 
-    let last_seg = null;
+        audio_file_name.innerText = audio_file.name;
+        ali_file_name.innerText = ali_file.name;
 
-    setInterval(() => {
+        player.src = URL.createObjectURL(audio_file);
 
-        let time = player.currentTime;
-        let segs = document.getElementsByClassName('seg');
-        let seg_found = false;
-        for (let i = 0; i < segs.length; i++) {
-            let seg = segs[i];
-            let start = Number(seg.getAttribute('data-start'));
-            let end = Number(seg.getAttribute('data-end'));
-            if (time >= start && time <= end) {
-                seg_found = true;
-                if (seg !== last_seg) {
-                    seg.classList.add('active');
-                    last_seg = seg;
-                    seg.scrollIntoView({behavior: "instant", block: "center", inline: "nearest"});
-                }
-                let reco = seg.querySelector('.reco').getElementsByTagName('span');
-                for (let i = 0; i < reco.length; i++) {
-                    let start = Number(reco[i].getAttribute('s'));
-                    let end = Number(reco[i].getAttribute('e'));
-                    if (time >= start && time <= end) {
-                        reco[i].classList.add('a');
-                    } else {
-                        reco[i].classList.remove('a');
+        let pause_after = -1;
+        setInterval(() => {
+            if (pause_after > 0 && player.currentTime > pause_after) {
+                player.pause();
+                pause_after = -1;
+            }
+        }, 100);
+
+        let last_seg = null;
+
+        setInterval(() => {
+            let time = player.currentTime;
+            let segs = document.getElementsByClassName('seg');
+            let seg_found = false;
+            for (const element of segs) {
+                let seg = element;
+                let start = Number(seg.getAttribute('data-start'));
+                let end = Number(seg.getAttribute('data-end'));
+                if (time >= start && time <= end) {
+                    seg_found = true;
+                    if (seg !== last_seg) {
+                        seg.classList.add('active');
+                        last_seg = seg;
+                        seg.scrollIntoView({behavior: "instant", block: "center", inline: "nearest"});
                     }
-                }
-                let norm = seg.querySelector('.norm')
-                if (norm) {
-                    norm = norm.getElementsByTagName('span');
-                    let word_found = false;
-                    for (let i = 0; i < norm.length; i++) {
-                        let start = Number(norm[i].getAttribute('s'));
-                        let end = Number(norm[i].getAttribute('e'));
+                    let reco = seg.querySelector('.reco').getElementsByTagName('span');
+                    for (const element of reco) {
+                        let start = Number(element.getAttribute('s'));
+                        let end = Number(element.getAttribute('e'));
                         if (time >= start && time <= end) {
-                            word_found = true;
-                            norm[i].classList.add('a');
-                            let cs = Number(norm[i].getAttribute('x'));
-                            let ce = Number(norm[i].getAttribute('y'));
-                            let text = seg.querySelector('.text');
-                            let t = text.innerText;
-                            text.innerHTML = t.substring(0, cs) + '<span class="a">' + t.substring(cs, ce) + '</span>' + t.substring(ce);
+                            element.classList.add('a');
                         } else {
-                            norm[i].classList.remove('a');
+                            element.classList.remove('a');
                         }
                     }
-                    if (!word_found) {
-                        let text = seg.querySelector('.text');
-                        text.innerHTML = text.innerText;
+                    let norm = seg.querySelector('.norm')
+                    if (norm) {
+                        norm = norm.getElementsByTagName('span');
+                        let word_found = false;
+                        for (const element of norm) {
+                            let start = Number(element.getAttribute('s'));
+                            let end = Number(element.getAttribute('e'));
+                            if (time >= start && time <= end) {
+                                word_found = true;
+                                element.classList.add('a');
+                                let cs = Number(element.getAttribute('x'));
+                                let ce = Number(element.getAttribute('y'));
+                                let text = seg.querySelector('.text');
+                                let t = text.innerText;
+                                text.innerHTML = t.substring(0, cs) + '<span class="a">' + t.substring(cs, ce) + '</span>' + t.substring(ce);
+                            } else {
+                                element.classList.remove('a');
+                            }
+                        }
+                        if (!word_found) {
+                            let text = seg.querySelector('.text');
+                            text.innerHTML = text.innerText;
+                        }
                     }
-                }
-            } else {
-                seg.classList.remove('active');
-            }
-        }
-        if (!seg_found) {
-            last_seg = null;
-        }
-    }, 300);
-
-    function play() {
-        let time = document.getElementById('time').value;
-        let tok = time.trim().split(' ')
-        let start = Number(tok[0]);
-        let end = Number(tok[1]);
-        player.currentTime = start;
-        pause_after = end;
-        player.play();
-    }
-
-    function playbtn(evt) {
-        let btn = evt.target;
-        let start = Number(btn.parentElement.getAttribute('data-start'));
-        let end = Number(btn.parentElement.getAttribute('data-end'));
-        player.currentTime = start;
-        pause_after = end;
-        player.play();
-    }
-
-    const seg_file = urlParams.get('json');
-    fetch(seg_file).then((resp) => resp.json()).then((data) => {
-
-        const segments = document.getElementById("segments");
-        data.forEach((seg) => {
-
-            if (seg['start'] === 0 && seg['end'] === 0) {
-                return;
-            }
-
-            let seg_el = document.createElement('div');
-            seg_el.setAttribute('data-start', seg['start']);
-            seg_el.setAttribute('data-end', seg['end']);
-            seg_el.classList.add('seg');
-            segments.append(seg_el);
-
-            let btn = document.createElement('button');
-            btn.onclick = playbtn;
-            btn.innerHTML = '&#9658;';
-
-            seg_el.appendChild(btn);
-
-            let trans = document.createElement('div');
-            trans.classList.add('trans');
-            seg_el.appendChild(trans);
-
-            if ('errors' in seg) {
-                let wer = document.createElement('span');
-                let wernum = seg['errors']['wer'];
-                wer.innerText = (100.0 * wernum).toFixed(0) + '%';
-                wer.classList.add('wer');
-
-                if (wernum < 0.01) {
-                    wer.classList.add('perfect');
-                } else if (wernum < 0.1) {
-                    wer.classList.add('good');
-                } else if (wernum < 0.5) {
-                    wer.classList.add('mediocre');
-                } else if (wernum < 1.0) {
-                    wer.classList.add('bad');
                 } else {
-                    wer.classList.add('terrible');
+                    seg.classList.remove('active');
                 }
-
-                trans.appendChild(wer);
             }
+            if (!seg_found) {
+                last_seg = null;
+            }
+        }, 300);
 
-            let unaligned = 'unaligned' in seg && seg['unaligned'] === true;
 
-            if (!unaligned) {
-                let text = document.createElement('p');
-                let norm = document.createElement('p');
-                text.classList.add('text');
-                norm.classList.add('norm');
-                text.innerText = seg['text'];
-                trans.appendChild(text);
-                trans.appendChild(norm);
+        function play() {
+            let time = document.getElementById('time').value;
+            let tok = time.trim().split(' ')
+            let start = Number(tok[0]);
+            let end = Number(tok[1]);
+            player.currentTime = start;
+            pause_after = end;
+            player.play();
+        }
 
-                seg['norm'].split(' ').forEach((word, idx) => {
-                    if (word.length === 0) {
-                        return;
+        function playbtn(evt) {
+            let btn = evt.target;
+            let start = Number(btn.parentElement.getAttribute('data-start'));
+            let end = Number(btn.parentElement.getAttribute('data-end'));
+            player.currentTime = start;
+            pause_after = end;
+            player.play();
+        }
+
+        let reader = new FileReader();
+        reader.onload = function (ev) {
+            let data = JSON.parse(ev.target.result);
+            for (const seg of Object.values(data)) {
+                if (seg['start'] === 0 && seg['end'] === 0)
+                    continue;
+
+                let seg_el = document.createElement('div');
+                seg_el.setAttribute('data-start', seg['start']);
+                seg_el.setAttribute('data-end', seg['end']);
+                seg_el.classList.add('seg');
+                segments.append(seg_el);
+
+                let btn = document.createElement('button');
+                btn.onclick = playbtn;
+                btn.innerHTML = '&#9658;';
+
+                seg_el.appendChild(btn);
+
+                let trans = document.createElement('div');
+                trans.classList.add('trans');
+                seg_el.appendChild(trans);
+
+                if ('errors' in seg) {
+                    let wer = document.createElement('span');
+                    let wernum = seg['errors']['wer'];
+                    wer.innerText = (100.0 * wernum).toFixed(0) + '%';
+                    wer.classList.add('wer');
+
+                    if (wernum < 0.01) {
+                        wer.classList.add('perfect');
+                    } else if (wernum < 0.1) {
+                        wer.classList.add('good');
+                    } else if (wernum < 0.5) {
+                        wer.classList.add('mediocre');
+                    } else if (wernum < 1.0) {
+                        wer.classList.add('bad');
+                    } else {
+                        wer.classList.add('terrible');
                     }
-                    let span = document.createElement('span');
-                    span.setAttribute('s', seg['words'][idx]['time_s']);
-                    span.setAttribute('e', seg['words'][idx]['time_e']);
-                    span.setAttribute('x', seg['words'][idx]['char_s']);
-                    span.setAttribute('y', seg['words'][idx]['char_e']);
-                    span.innerText = word;
-                    norm.appendChild(span);
-                });
-            }
 
-            let reco = document.createElement('p');
-            reco.classList.add('reco');
-            seg['reco'].split(' ').forEach((word, idx) => {
-                if (word.length === 0) {
-                    return;
+                    trans.appendChild(wer);
                 }
-                let span = document.createElement('span');
-                span.setAttribute('s', seg['reco_words'][idx]['time_s']);
-                span.setAttribute('e', seg['reco_words'][idx]['time_e']);
-                span.innerText = word;
-                reco.appendChild(span);
-            });
-            trans.appendChild(reco);
 
+                let unaligned = 'match_error' in seg;
 
-        });
-    });
+                if (!unaligned) {
+                    let text = document.createElement('p');
+                    let norm = document.createElement('p');
+                    text.classList.add('text');
+                    norm.classList.add('norm');
+                    text.innerText = seg['text'];
+                    trans.appendChild(text);
+                    trans.appendChild(norm);
+
+                    seg['norm'].split(' ').forEach((word, idx) => {
+                        if (word.length === 0) {
+                            return;
+                        }
+                        let span = document.createElement('span');
+                        span.setAttribute('s', seg['words'][idx]['time_s']);
+                        span.setAttribute('e', seg['words'][idx]['time_e']);
+                        span.setAttribute('x', seg['words'][idx]['char_s']);
+                        span.setAttribute('y', seg['words'][idx]['char_e']);
+                        span.innerText = word;
+                        norm.appendChild(span);
+                    });
+                }
+
+                if ('reco' in seg) {
+                    let reco = document.createElement('p');
+                    reco.classList.add('reco');
+                    seg['reco'].split(' ').forEach((word, idx) => {
+                        if (word.length === 0) {
+                            return;
+                        }
+                        let span = document.createElement('span');
+                        span.setAttribute('s', seg['reco_words'][idx]['time_s']);
+                        span.setAttribute('e', seg['reco_words'][idx]['time_e']);
+                        span.innerText = word;
+                        reco.appendChild(span);
+                    });
+                    trans.appendChild(reco);
+                }
+
+            }
+        }
+        reader.readAsText(ali_file);
+    }
 </script>
 </body>
 </html>

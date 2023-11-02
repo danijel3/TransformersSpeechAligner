@@ -32,7 +32,34 @@ if 'WAV_PATH' in os.environ and 'JSON_PATH' in os.environ:
 def index():
     if not audio or not annotations:
         return abort(404)
-    return render_template('visualize.html', audio=audio, annotations=annotations)
+
+    stats = {'ref_only_seg': 0, 'ref_only_words': 0,
+             'reco_only_seg': 0, 'reco_only_words': 0,
+             'ok_match_seg': 0, 'ok_match_words': 0}
+    corr = 0
+    num = 0
+    for seg in annotations:
+        if seg['match_error'] == 'only in reference':
+            stats['ref_only_seg'] += 1
+            stats['ref_only_words'] += len(seg['text'].split())
+        elif seg['match_error'] == 'only in reco':
+            stats['reco_only_seg'] += 1
+            stats['reco_only_words'] += len(seg['reco'].split())
+        else:
+            stats['ok_match_seg'] += 1
+            stats['ok_match_words'] += len(seg['norm'].split())
+
+        if 'errors' in seg:
+            corr += seg['errors']['corr']
+            num += seg['errors']['num']
+
+    stats['overall_wer'] = round(100 * (num - corr) / num, 2)
+
+    annot_filt = annotations
+    if 'noref' in request.args:
+        annot_filt = list(filter(lambda x: x['match_error'] != 'only in reference', annotations))
+
+    return render_template('visualize.html', audio=audio, annotations=annot_filt, stats=stats)
 
 
 @app.route('/audio')

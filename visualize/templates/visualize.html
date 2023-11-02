@@ -15,10 +15,22 @@
 </div>
 
 <div id="legend">
+    <b>Legend:</b>
     <span class="wer">word error rate %</span>
     <span class="text">Corpus text</span>
     <span class="norm">Normalized text</span>
     <span class="reco">Reco text</span>
+    <span>Middle-click segment to expand</span>
+</div>
+
+<div id="stats">
+    <b>Stats:</b>
+    {% for k,v in stats.items() %}
+        <div class="stat">
+            <div class="stat--key">{{ k }}</div>
+            <div class="stat--value">{{ v }}</div>
+        </div>
+    {% endfor %}
 </div>
 
 <div id="segments--container">
@@ -45,7 +57,7 @@
                 {% endif %}
             </div>
 
-            <div class="seg--data" onmouseenter="make_selected(this)" data-start="{{ seg['start'] }}"
+            <div class="seg--data" onauxclick="make_selected(this)" data-start="{{ seg['start'] }}"
                  data-end="{{ seg['end'] }}">
                 {%- if 'text' in seg %}
                     <div class="text">

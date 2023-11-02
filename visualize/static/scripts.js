@@ -1,12 +1,21 @@
 let prev_selected = null;
 
 function make_selected(el) {
-    if (player.paused) {
-        if (prev_selected) {
-            prev_selected.classList.remove('selected');
+    if (event.which !== 2) {
+        return;
+    }
+
+    if (el.classList.contains('selected')) {
+        el.classList.remove('selected');
+        prev_selected = null;
+    } else {
+        if (player.paused) {
+            if (prev_selected) {
+                prev_selected.classList.remove('selected');
+            }
+            el.classList.add('selected');
+            prev_selected = el;
         }
-        el.classList.add('selected');
-        prev_selected = el;
     }
 }
 
