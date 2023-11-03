@@ -1,6 +1,5 @@
 import argparse
 import json
-import os
 import re
 from pathlib import Path
 
@@ -8,30 +7,35 @@ from flask import Flask, render_template, make_response, request, abort
 
 app = Flask('visualize')
 
+audio_dir = Path('debug-croatian/wav')
+json_dir = Path('debug-croatian/output')
+
 audio = None
 audio_size = 0
 
-annotations = None
+
+@app.route('/')
+def index():
+    files = [x.stem for x in json_dir.glob('*.json')]
+
+    return render_template('index.html', files=files)
 
 
-def load_data(wav: Path, json_file: Path):
-    global audio, audio_size, annotations
-    with open(wav, 'rb') as f:
+@app.route('/visualize/<utt>')
+def visualize(utt):
+    global audio, audio_size
+    audio_file = audio_dir / (utt + '.wav')
+    json_file = json_dir / (utt + '.json')
+
+    if not audio_file.exists() or not json_file.exists():
+        abort(404)
+
+    with open(audio_file, 'rb') as f:
         audio = f.read()
         audio_size = len(audio)
 
     with open(json_file) as f:
         annotations = json.load(f)
-
-
-if 'WAV_PATH' in os.environ and 'JSON_PATH' in os.environ:
-    load_data(Path(os.environ['WAV_PATH']), Path(os.environ['JSON_PATH']))
-
-
-@app.route('/')
-def index():
-    if not audio or not annotations:
-        return abort(404)
 
     stats = {'ref_only_seg': 0, 'ref_only_words': 0,
              'reco_only_seg': 0, 'reco_only_words': 0,
@@ -64,6 +68,9 @@ def index():
 
 @app.route('/audio')
 def get_audio():
+    if not audio:
+        return abort(404)
+
     headers = []
     end = audio_size - 1
     if 'Range' in request.headers:
@@ -90,11 +97,12 @@ def get_audio():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('json', type=Path)
-    parser.add_argument('wav', type=Path)
+    parser.add_argument('wav_dir', type=Path)
+    parser.add_argument('json_dir', type=Path)
 
     args = parser.parse_args()
 
-    load_data(args.wav, args.json)
+    audio_dir = args.wav_dir
+    json_dir = args.json_dir
 
     app.run()
