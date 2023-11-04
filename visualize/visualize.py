@@ -10,9 +10,6 @@ app = Flask('visualize')
 audio_dir = Path('debug-croatian/wav')
 json_dir = Path('debug-croatian/output')
 
-audio = None
-audio_size = 0
-
 
 @app.route('/')
 def index():
@@ -23,16 +20,11 @@ def index():
 
 @app.route('/visualize/<utt>')
 def visualize(utt):
-    global audio, audio_size
     audio_file = audio_dir / (utt + '.wav')
     json_file = json_dir / (utt + '.json')
 
     if not audio_file.exists() or not json_file.exists():
         abort(404)
-
-    with open(audio_file, 'rb') as f:
-        audio = f.read()
-        audio_size = len(audio)
 
     with open(json_file) as f:
         annotations = json.load(f)
@@ -63,17 +55,20 @@ def visualize(utt):
     if 'noref' in request.args:
         annot_filt = list(filter(lambda x: x['match_error'] != 'only in reference', annotations))
 
-    return render_template('visualize.html', audio=audio, annotations=annot_filt, stats=stats)
+    return render_template('visualize.html', utt=utt, annotations=annot_filt, stats=stats)
 
 
-@app.route('/audio')
-def get_audio():
-    if not audio:
-        return abort(404)
+@app.route('/audio/<utt>')
+def get_audio(utt):
+    audio_file = audio_dir / (utt + '.wav')
+
+    if not audio_file.exists():
+        abort(404)
 
     headers = []
-    end = audio_size - 1
     if 'Range' in request.headers:
+        audio_size = audio_file.stat().st_size
+        end = audio_size - 1
         status = 206
         headers.append(('Accept-Ranges', 'bytes'))
         ranges = re.findall(r'\d+', request.headers['Range'])
@@ -81,10 +76,13 @@ def get_audio():
         if len(ranges) > 1:
             end = int(ranges[1])
         headers.append(('Content-Range', f'bytes {begin}-{end}/{audio_size}'))
-        buf = audio[begin:end + 1]
+        with open(audio_file, 'rb') as f:
+            f.seek(begin)
+            buf = f.read(end - begin + 1)
     else:
         status = 200
-        buf = audio
+        with open(audio_file, 'rb') as f:
+            buf = f.read()
 
     response = make_response(buf)
     response.status = status
