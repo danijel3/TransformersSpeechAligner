@@ -17,6 +17,9 @@ def reco(logits: np.ndarray, vad_segments: List, ngram_model: Path, unigrams_lis
     processor = AutoProcessor.from_pretrained(w2v2_model)
     labels = [x[0] for x in sorted(processor.tokenizer.get_vocab().items(), key=lambda x: x[1])]
 
+    if len(unigrams_list) == 0:
+        unigrams_list = None
+
     decoder = build_ctcdecoder(
         labels,
         kenlm_model_path=str(ngram_model),
@@ -37,7 +40,8 @@ def reco(logits: np.ndarray, vad_segments: List, ngram_model: Path, unigrams_lis
         assert (len(words) == len(text.split())), 'word count doesn\'t match between text and word list'
         offsets = [{'start': seg[0] + (w[1][0] / float(vps)), 'end': seg[0] + (w[1][1] / float(vps))} for w in words]
         ret.append(
-            {'start': seg[0], 'end': seg[1], 'text': text, 'words': offsets, 'acoustic_score': ac_sc, 'lm_score': lm_sc})
+            {'start': seg[0], 'end': seg[1], 'text': text, 'words': offsets, 'acoustic_score': ac_sc,
+             'lm_score': lm_sc})
 
     with open(output_reco, 'w') as f:
         json.dump(ret, f, indent=4)
