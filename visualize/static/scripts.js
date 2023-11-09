@@ -9,11 +9,12 @@ function make_selected(el) {
         el.classList.remove('selected');
         prev_selected = null;
     } else {
-        if (player.paused) {
+        if (player.paused && el !== prev_selected) {
             if (prev_selected) {
                 prev_selected.classList.remove('selected');
             }
             el.classList.add('selected');
+            el.scrollIntoView({block: 'center'});
             prev_selected = el;
         }
     }
@@ -35,6 +36,14 @@ function play(from, to) {
     player.play();
 }
 
+function stepback() {
+    player.currentTime -= 1.0;
+}
+
+function stepforward() {
+    player.currentTime += 1.0;
+}
+
 const segments = Array.from(document.querySelectorAll('.seg--data')).filter(el => el.getAttribute('data-start') !== '');
 
 function scroll_into_view() {
@@ -49,8 +58,19 @@ function highlight_words() {
     const time = player.currentTime;
     const seg = segments.find(el => el.getAttribute('data-start') <= time && el.getAttribute('data-end') > time);
     if (seg) {
-        seg.classList.add('selected');
-        prev_selected = seg;
+        if (seg !== prev_selected) {
+            if (prev_selected) {
+                for (let sub of ['norm', 'reco', 'text']) {
+                    let el = prev_selected.getElementsByClassName(sub);
+                    if (el.length > 0) {
+                        el[0].innerHTML = el[0].innerText;
+                    }
+                }
+                prev_selected.classList.remove('selected');
+            }
+            seg.classList.add('selected');
+            prev_selected = seg;
+        }
 
         const recoword = Array.from(seg.querySelectorAll('reco-words word')).find(el => el.getAttribute('t-s') <= time && el.getAttribute('t-e') > time);
         if (recoword) {
@@ -80,9 +100,6 @@ function highlight_words() {
 let last_time = player.currentTime;
 setInterval(() => {
     if (player.currentTime !== last_time) {
-        if (prev_selected) {
-            prev_selected.classList.remove('selected');
-        }
         last_time = player.currentTime;
         highlight_words();
     }

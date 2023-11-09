@@ -13,7 +13,7 @@ json_dir = Path('debug-croatian/output')
 
 @app.route('/')
 def index():
-    files = [x.stem for x in json_dir.glob('*.json')]
+    files = sorted([x.stem for x in json_dir.glob('*.json')])
 
     return render_template('index.html', files=files)
 

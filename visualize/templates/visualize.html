@@ -11,7 +11,11 @@
         <source src="/audio/{{ utt }}">
     </audio>
 
-    <div id="scroll" onclick="scroll_into_view()">&#x2316;</div>
+    <div class="playertoolbar">
+        <div id="stepback" class="playerbtn" onclick="stepback()">&#x23ee;</div>
+        <div id="scroll" class="playerbtn" onclick="scroll_into_view()">&#x2316;</div>
+        <div id="stepfwd" class="playerbtn" onclick="stepforward()">&#x23ed;</div>
+    </div>
 
 </div>
 
@@ -54,7 +58,12 @@
                     </div>
                 {% endif %}
                 {% if 'errors' in seg %}
-                    <div class="wer">{{ '%0.2f'|format(seg['errors']['wer']*100) }}%</div>
+                    {% if seg['errors']['wer']>=1.0 %}
+                        {% set bad='wer-bad' %}
+                    {% else %}
+                        {% set bad='' %}
+                    {% endif %}
+                    <div class="wer {{ bad }}">{{ '%0.2f'|format(seg['errors']['wer']*100) }}%</div>
                 {% endif %}
             </div>
 
