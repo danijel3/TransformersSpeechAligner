@@ -1,244 +1,243 @@
 import argparse
 import json
-from dataclasses import dataclass, field
-from math import ceil
 from pathlib import Path
-from typing import Dict, Set, List, Tuple, Optional
-
+from typing import List, Tuple, Optional, Dict
 from Levenshtein import distance, opcodes
+from dataclasses import dataclass
+from tqdm import tqdm
 
 
 @dataclass
-class Dictionary:
-    word2id: Dict[str, int] = field(default_factory=lambda: {'<unk>': 0})
-    id2word: Dict[int, str] = field(default_factory=lambda: {0: '<unk>'})
-
-    def put(self, words: Set):
-        for id, word in enumerate(sorted(list(words))):
-            self.word2id[word] = id + 1
-            self.id2word[id + 1] = word
-
-    def get_id(self, word: str, warn_oov: bool = False) -> int:
-        if word not in self.word2id:
-            if warn_oov:
-                print(f'WARN: missing word "{word}"')
-            return 0
-        return self.word2id[word]
-
-    def get_word(self, id: int) -> str:
-        return self.id2word[id]
-
-    def get_text(self, ids: List[int]) -> str:
-        return ' '.join([self.get_word(x) for x in ids])
-
-    def get_ids(self, text: str, warn_oov: bool = False) -> List[int]:
-        return self.to_ids(text.strip().split(), warn_oov)
-
-    def to_ids(self, text: List[str], warn_oov: bool = False) -> List[int]:
-        return [self.get_id(x, warn_oov) for x in text]
-
-    def to_words(self, ids: List[int]) -> List[str]:
-        return [self.get_word(x) for x in ids]
-
-    def save(self, file: Path):
-        with open(file, 'w') as f:
-            for id, word in self.id2word.items():
-                f.write(f'{id} {word}\n')
-
-    def load(self, file: Path):
-        self.word2id = {}
-        self.id2word = {}
-        with open(file) as f:
-            for l in f:
-                tok = l.strip().split()
-                id = int(tok[0])
-                word = tok[1]
-                self.id2word[id] = word
-                self.word2id[word] = id
-
-
-@dataclass
-class Word:
+class RecoWord:
+    word: int
     text: str
     start: float
     end: float
+    seg: int
+    pos: int
 
 
-class Matcher:
-    '''Matcher utility class
+@dataclass
+class NormWord:
+    word: int
+    text: str
+    seg: int
+    pos: int
 
-    This class loads a large text corpus and allows matching short text segments to it.
-    '''
 
-    def __init__(self, word_seq: List[str]):
-        self.corpus = []
+def _initial_match(reco: List[RecoWord], norm: List[NormWord], threshold: float = 0.9, threshold2: float = 0.99) -> \
+        List[Tuple[int, float]]:
+    """
+    Find locations of best BOW match by calculating a moving-windows histogram over data. The threshold is used to
+    filter locations that are greater-equal than that value product of the best location match.
+    :param text: input text
+    :param threshold: filter threshold
+    :return: list of (location, score) tuples
+    """
+    hist = set([reco.word for reco in reco])
+    hist_sum = 0
+    best_sum = 0
+    N = len(reco)
+    for i in norm[:N]:
+        if i.word in hist:
+            hist_sum += 1
+    dist = [(0, hist_sum)]
+    for i in range(N, len(norm)):
+        if norm[i - N].word in hist:
+            hist_sum -= 1
+        if norm[i].word in hist:
+            hist_sum += 1
+        if hist_sum >= best_sum * 0.9:
+            dist.append((i, hist_sum))
+            if hist_sum > best_sum:
+                best_sum = hist_sum
+    ret = list(filter(lambda x: x[1] >= best_sum * threshold, dist))
+    if len(ret) > 1000:
+        ret = list(filter(lambda x: x[1] >= best_sum * threshold2, dist))
+    return ret
 
-        self.vocab = Dictionary()
 
-        self.vocab.put(set(word_seq))
+def _find_min_diff(dist: List[Tuple[int, float]], reco: List[RecoWord], norm: List[NormWord]) -> Tuple[
+    int, float, int]:
+    """
+    Use Levenshtein distance to find the location with minimum difference from the list of candiadates.
+    :param dist: candidates returned by _initial_match
+    :param text: input text
+    :return: (location, distance) tuple
+    """
+    N = len(reco)
+    reco_text = ' '.join([x.text for x in reco])
+    norm_text = [x.text for x in norm]
+    min_d = 10e10
+    min_i = -1
+    for i, _ in dist:
+        norm_sub = ' '.join(norm_text[i - N:i])
+        d = distance(norm_sub, reco_text)
+        if d < min_d:
+            min_d = d
+            min_i = i - N
+    return min_i, min_d, len(reco_text)
 
-        for w in word_seq:
-            self.corpus.append(self.vocab.get_id(w))
 
-    def _initial_match(self, text: str, threshold: float = 0.9) -> List[Tuple[int, float]]:
-        """
-        Find locations of best BOW match by calculating a moving-windows histogram over data. The threshold is used to
-        filter locations that are greater-equal than that value product of the best location match.
-        :param text: input text
-        :param threshold: filter threshold
-        :return: list of (location, score) tuples
-        """
-        text_ids = self.vocab.get_ids(text)
-        hist = set(text_ids)
-        hist_sum = 0
-        best_sum = 0
-        N = int(len(text_ids))
-        for i in self.corpus[:N]:
-            if i in hist:
-                hist_sum += 1
-        dist = [(0, hist_sum)]
-        for i in range(N, len(self.corpus)):
-            if self.corpus[i - N] in hist:
-                hist_sum -= 1
-            if self.corpus[i] in hist:
-                hist_sum += 1
-            if hist_sum >= best_sum * 0.9:
-                dist.append((i, hist_sum))
-                if hist_sum > best_sum:
-                    best_sum = hist_sum
-        return list(filter(lambda x: x[1] >= best_sum * threshold, dist))
+def _find_matching_seq_words(reco: List[RecoWord], norm: List[NormWord]) -> Optional[
+    Tuple[Tuple[int, int], Tuple[int, int]]]:
+    """
+    Finds sequence in both reference and hypothesis that is a good match. Throws away any initial/final
+    insertion/deletion and leaves the mathching middle.
+    :param text: input text
+    :return: (hyp start, hyp end) , (ref start, ref end) tuple of tuples
+    """
+    reco_ids = [x.word for x in reco]
+    norm_ids = [x.word for x in norm]
+    reco_off = reco[0].pos
+    norm_off = norm[0].pos
+    m = list(filter(lambda x: x[0] == 'equal', opcodes(reco_ids, norm_ids)))
+    if not m:
+        return None
+    rb = m[0][1]
+    re = m[-1][2]
+    nb = m[0][3]
+    ne = m[-1][4]
+    return (reco_off + rb, reco_off + re), (norm_off + nb, norm_off + ne)
 
-    def _find_min_diff(self, dist: List[Tuple[int, float]], text: str) -> Tuple[int, float]:
-        """
-        Use Levenshtein distance to find the location with minimum difference from the list of candiadates.
-        :param dist: candidates returned by _initial_match
-        :param text: input text
-        :return: (location, distance) tuple
-        """
-        N = len(text.split())
-        min_d = 10e10
-        min_i = -1
-        for i, _ in dist:
-            ref = self.vocab.get_text(self.corpus[i - N:i])
-            d = distance(ref, text)
-            if d < min_d:
-                min_d = d
-                min_i = i - N
-        return min_i, min_d
 
-    def _find_matching_seq(self, text: str, min_i: int) -> Optional[Tuple[Tuple[int, int], Tuple[int, int]]]:
-        """
-        Finds sequence in both reference and hypothesis that is a good match. Throws away any initial/final
-        insertion/deletion and leaves the mathching middle.
-        :param text: input text
-        :param min_i: the best location as found by _find_min_diff
-        :return: (hyp start, hyp end) , (ref start, ref end) tuple of tuples
-        """
-        text_ids = self.vocab.get_ids(text)
-        N = int(len(text_ids))
-        m = list(filter(lambda x: x[0] == 'equal', opcodes(text_ids, self.corpus[min_i:min_i + N])))
+def char_to_word_idx(text: str, char_pos: int) -> int:
+    """
+    Converts character position to word position.
+    :param text: input text
+    :param char_pos: character position
+    :return: word position
+    """
+    words = text.split()
+    pos = 0
+    for i, w in enumerate(words):
+        if pos + len(w) > char_pos:
+            return i
+        pos += len(w) + 1
+    return len(words) - 1
+
+
+def _find_matching_seq_chars(reco: List[RecoWord], norm: List[NormWord]) -> Optional[
+    Tuple[Tuple[int, int], Tuple[int, int]]]:
+    """
+    Finds sequence in both reference and hypothesis that is a good match. Throws away any initial/final
+    insertion/deletion and leaves the mathching middle.
+    :param text: input text
+    :return: (hyp start, hyp end) , (ref start, ref end) tuple of tuples
+    """
+    reco_text = ' '.join([x.text for x in reco])
+    norm_text = ' '.join([x.text for x in norm])
+    reco_off = reco[0].pos
+    norm_off = norm[0].pos
+    m = list(filter(lambda x: x[0] == 'equal' and x[2] - x[1] > 2, opcodes(reco_text, norm_text)))
+    if not m:
+        return None
+    rb = m[0][1]
+    re = m[-1][2]
+    nb = m[0][3]
+    ne = m[-1][4]
+
+    rb = char_to_word_idx(reco_text, rb)
+    re = char_to_word_idx(reco_text, re - 1) + 1
+    nb = char_to_word_idx(norm_text, nb)
+    ne = char_to_word_idx(norm_text, ne - 1) + 1
+
+    return (reco_off + rb, reco_off + re), (norm_off + nb, norm_off + ne)
+
+
+def reco_to_chunks(reco_words: List, reco_gap: float = 15.0, min_len: int = 15, max_len: int = 1000) -> List:
+    reco_chunks = []
+    last_chunk = []
+    last_end = reco_words[0].start
+    for w in reco_words:
+        if w.start - last_end > reco_gap or len(last_chunk) >= max_len:
+            if len(last_chunk) >= min_len:
+                reco_chunks.append((last_chunk[0].pos, last_chunk[-1].pos + 1))
+            last_chunk = [w]
+            last_end = w.start
+        else:
+            last_chunk.append(w)
+            last_end = w.end
+    if len(last_chunk) >= min_len:
+        reco_chunks.append((last_chunk[0].pos, last_chunk[-1].pos + 1))
+    return reco_chunks
+
+
+def search_initial_matches(reco_words: List, reco_chunks: List, norm_words: List, good_th: float = 0.1,
+                           segs: List = []) -> List[Dict]:
+    for cs, ce in tqdm(reco_chunks):
+        im = _initial_match(reco_words[cs:ce], norm_words)
+        min_i, min_d, len_reco = _find_min_diff(im, reco_words[cs:ce], norm_words)
+        if min_d / len_reco < good_th:
+            m = _find_matching_seq_words(reco_words[cs:ce], norm_words[min_i:min_i + (ce - cs)])
+            if not m:
+                continue
+            (rb, re), (nb, ne) = m
+            segs.append({'reco': {'beg': rb, 'end': re}, 'norm': {'beg': nb, 'end': ne}})
+
+    segs = sorted(segs, key=lambda x: x['norm']['beg'])
+    seg_fix = [segs[0]]
+    for seg in segs[1:]:
+        if seg['norm']['beg'] > seg_fix[-1]['norm']['end']:
+            seg_fix.append(seg)
+    segs = sorted(seg_fix, key=lambda x: x['reco']['beg'])
+
+    return segs
+
+
+def search_between_segs(segs: List, reco_words: List, norm_words: List, ib_score_th: float = 0.5) -> List[Dict]:
+    ib_segs = [{'reco': {'beg': p['reco']['end'], 'end': n['reco']['beg']},
+                'norm': {'beg': p['norm']['end'], 'end': n['norm']['beg']}} for p, n in zip(segs[:-1], segs[1:])]
+    ib_segs = list(
+        filter(lambda x: x['reco']['end'] - x['reco']['beg'] > 0 and x['norm']['end'] - x['norm']['beg'] > 0, ib_segs))
+
+    nsegs = sorted(segs, key=lambda x: x['norm']['beg'])
+
+    reco_end = segs[0]['reco']['beg']
+    norm_beg = nsegs[0]['norm']['beg'] - reco_end
+    norm_end = nsegs[0]['norm']['beg']
+    if norm_beg < 0:
+        norm_beg = 0
+    if reco_end > 0 and norm_end > norm_beg:
+        ib_segs.insert(0, {'reco': {'beg': 0, 'end': reco_end}, 'norm': {'beg': norm_beg, 'end': norm_end}})
+
+    reco_beg = segs[-1]['reco']['end']
+    reco_end = len(reco_words)
+    norm_beg = nsegs[-1]['norm']['end']
+    norm_end = norm_beg + (reco_end - reco_beg)
+    if norm_end > len(norm_words):
+        norm_end = len(norm_words)
+    if reco_end > reco_beg and norm_end > norm_beg:
+        ib_segs.append({'reco': {'beg': reco_beg, 'end': reco_end}, 'norm': {'beg': norm_beg, 'end': norm_end}})
+
+    for i, seg in enumerate(ib_segs):
+
+        len_ratio = (seg['reco']['end'] - seg['reco']['beg']) / (seg['norm']['end'] - seg['norm']['beg'])
+
+        if len_ratio < (1 / 5) or len_ratio > 5:
+            continue
+
+        reco_chunk = reco_words[seg['reco']['beg']:seg['reco']['end']]
+        norm_chunk = norm_words[seg['norm']['beg']:seg['norm']['end']]
+
+        m = _find_matching_seq_words(reco_chunk, norm_chunk)
         if not m:
-            return None
-        hb = m[0][1]
-        he = m[-1][2]
-        rb = m[0][3]
-        re = m[-1][4]
-        return (hb, he), (rb, re)
+            continue
+        (rb, re), (nb, ne) = m
 
-    def get_corpus_chunk(self, start: int, end: int) -> str:
-        """
-        Get a portion of the corpus as a string.
-        :param start: start index
-        :param end: end index
-        :return: text
-        """
-        return self.vocab.get_text(self.corpus[start:end])
+        reco_text = ' '.join([x.text for x in reco_words[rb:re]])
+        norm_text = ' '.join([x.text for x in norm_words[nb:ne]])
+        score = distance(reco_text, norm_text) / len(norm_text)
 
-    def run(self, words: List[Word], chunk_len: int = 200, chunk_stride: int = 200) -> List:
+        if score < ib_score_th:
+            segs.append({'reco': {'beg': rb, 'end': re}, 'norm': {'beg': nb, 'end': ne}})
 
-        ret = []
+    return sorted(segs, key=lambda x: x['reco']['beg'])
 
-        chunk_num = ceil(len(words) / chunk_stride)
-        for c in range(chunk_num):
-            cs = c * chunk_stride
-            ce = cs + chunk_len
 
-            words_chunk = words[cs:ce]
-            text = ' '.join([x.text for x in words_chunk])
-
-            # print("Text: ", text)
-
-            locs = self._initial_match(text)
-            min_i, min_d = self._find_min_diff(locs, text)
-            # print("Min diff: ", min_d, len(text), min_d / len(text))
-            if min_d / len(text) > 0.4:
-                continue
-            res = self._find_matching_seq(text, min_i)
-            # print("Match: ", res)
-            if not res:
-                continue
-            (hb, he), (rb, re) = res
-            ref_text = self.get_corpus_chunk(min_i + rb, min_i + re)
-
-            reco_words = words_chunk[hb:he]
-            reco_text = ' '.join([x.text for x in reco_words])
-
-            ret.append({'ref_text': ref_text, 'ref_offset': {'start': min_i + rb, 'end': min_i + re},
-                        'reco_text': reco_text, 'reco_offset': {'start': cs + hb, 'end': cs + he},
-                        'audio_offsets': [(x.start, x.end) for x in reco_words]})
-
-        for mp, mn in zip(ret[:-1], ret[1:]):
-            reco_off_start = mp['reco_offset']['end']
-            reco_off_end = mn['reco_offset']['start']
-            if reco_off_end <= reco_off_start:
-                continue
-            reco_words = words[reco_off_start:reco_off_end]
-            reco_text = ' '.join([x.text for x in reco_words])
-            ref_off_start = mp['ref_offset']['end']
-            ref_off_end = mn['ref_offset']['start']
-            if ref_off_end <= ref_off_start:
-                continue
-            ref_text = self.get_corpus_chunk(ref_off_start, ref_off_end)
-            cer = distance(reco_text, ref_text) / len(ref_text)
-            if cer < 1.5:
-                ret.append({'ref_text': ref_text, 'ref_offset': {'start': ref_off_start, 'end': ref_off_end},
-                            'reco_text': reco_text, 'reco_offset': {'start': reco_off_start, 'end': reco_off_end},
-                            'audio_offsets': [(x.start, x.end) for x in reco_words]})
-
-        ret = sorted(ret, key=lambda x: x['audio_offsets'][0][0])
-
-        if ret[0]['reco_offset']['start'] > 0:
-            reco_off_end = ret[0]['reco_offset']['start']
-            reco_words = words[:reco_off_end]
-            reco_text = ' '.join([x.text for x in reco_words])
-
-            ref_off_end = ret[0]['ref_offset']['start']
-            ref_off_start = ref_off_end - reco_off_end - 5
-            if ref_off_start < 0:
-                ref_off_start = 0
-            ref_text = self.get_corpus_chunk(ref_off_start, ref_off_end)
-            ref_words = ref_text.split()
-
-            eq = list(filter(lambda x: x[0] == 'equal', opcodes(reco_text.split(), ref_text.split())))
-
-            for e in eq:
-                reco_subwords = reco_words[e[1]:e[2]]
-                ref_subwords = ref_words[e[3]:e[4]]
-
-                reco_sub_text = ' '.join([x.text for x in reco_subwords])
-                ref_sub_text = ' '.join(ref_subwords)
-
-                ret.append({'ref_text': ref_sub_text,
-                            'ref_offset': {'start': ref_off_start + e[3], 'end': ref_off_start + e[4]},
-                            'reco_text': reco_sub_text, 'reco_offset': {'start': e[1], 'end': e[2]},
-                            'audio_offsets': [(x.start, x.end) for x in reco_subwords]})
-
-        ret = sorted(ret, key=lambda x: x['audio_offsets'][0][0])
-
-        for s in ret:
-            s['cer'] = distance(s['reco_text'], s['ref_text']) / len(s['ref_text'])
-
-        return ret
+def seg_stats(segs: List, reco_words: List, norm_words: List):
+    print(f'Reco: {sum([x["reco"]["end"] - x["reco"]["beg"] for x in segs]) / len(reco_words):%}')
+    print(f'Norm: {sum([x["norm"]["end"] - x["norm"]["beg"] for x in segs]) / len(norm_words):%}')
 
 
 if __name__ == '__main__':
@@ -250,31 +249,103 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    ref_words = []
-    with open(args.norm) as f:
-        for l in json.load(f):
-            ref_words.extend(l['norm'].split())
-
-    reco_words = []
     with open(args.reco) as f:
-        for s in json.load(f):
-            for t, w in zip(s['text'].split(), s['words']):
-                reco_words.append(Word(t, w['start'], w['end']))
+        reco = json.load(f)
 
-    matcher = Matcher(ref_words)
+    with open(args.norm) as f:
+        norm = json.load(f)
 
-    ret = matcher.run(reco_words)
+    vocab = {}
+    reco_words = []
+    norm_words = []
+    pos = 0
+
+    for si, s in enumerate(reco):
+        for w, t in zip(s['text'].split(), s['words']):
+            if w not in vocab:
+                vocab[w] = len(vocab)
+            reco_words.append(RecoWord(vocab[w], w, t['start'], t['end'], si, pos))
+            pos += 1
+
+    pos = 0
+    for si, s in enumerate(norm):
+        for w in s['norm'].split():
+            if w not in vocab:
+                vocab[w] = len(vocab)
+            norm_words.append(NormWord(vocab[w], w, si, pos))
+            pos += 1
+
+    vocab_decode = {v: k for k, v in vocab.items()}
+
+    reco_chunks = reco_to_chunks(reco_words)
+
+    segs = search_initial_matches(reco_words, reco_chunks, norm_words)
+
+    prev = 0
+    for seg in sorted(segs, key=lambda x: x['norm']['beg']):
+        if seg['norm']['beg'] < prev:
+            print('overlap')
+        prev = seg['norm']['end']
+
+    print('Stats after initial match:')
+    seg_stats(segs, reco_words, norm_words)
+
+    segs = search_between_segs(segs, reco_words, norm_words)
+
+    prev = 0
+    for seg in sorted(segs, key=lambda x: x['norm']['beg']):
+        if seg['norm']['beg'] < prev:
+            print('overlap')
+        prev = seg['norm']['end']
+
+    print('Stats after aligning in-between segments:')
+    seg_stats(segs, reco_words, norm_words)
+
+    ib_chunks = [(p['reco']['end'], n['reco']['beg']) for p, n in zip(segs[:-1], segs[1:])]
+    if segs[0]['reco']['beg'] > 0:
+        ib_chunks.insert(0, (0, segs[0]['reco']['beg']))
+    if segs[-1]['reco']['end'] < len(reco_words):
+        ib_chunks.append((segs[-1]['reco']['end'], len(reco_words)))
+    ib_chunks = list(filter(lambda x: x[1] - x[0] > 0, ib_chunks))
+    ib_subchunks = []
+    for ch in ib_chunks:
+        ib_subchunks.extend(reco_to_chunks(reco_words[ch[0]:ch[1]]))
+    segs = search_initial_matches(reco_words, ib_subchunks, norm_words, good_th=0.5, segs=segs)
+
+    prev = 0
+    for seg in sorted(segs, key=lambda x: x['norm']['beg']):
+        if seg['norm']['beg'] < prev:
+            print('overlap')
+        prev = seg['norm']['end']
+
+    print('Stats after aligning with no sequence constraint:')
+    seg_stats(segs, reco_words, norm_words)
+
+    segs = search_between_segs(segs, reco_words, norm_words)
+
+    prev = 0
+    for seg in sorted(segs, key=lambda x: x['norm']['beg']):
+        if seg['norm']['beg'] < prev:
+            print('overlap')
+        prev = seg['norm']['end']
+
+    print('Stats after aligning in-between segments one more time:')
+    seg_stats(segs, reco_words, norm_words)
+
+    # generate output
+
+    output = []
+    for seg in segs:
+        reco_chunk = reco_words[seg['reco']['beg']:seg['reco']['end']]
+        norm_chunk = norm_words[seg['norm']['beg']:seg['norm']['end']]
+        reco_text = ' '.join([x.text for x in reco_chunk])
+        norm_text = ' '.join([x.text for x in norm_chunk])
+        output.append({'ref_text': norm_text,
+                       'ref_offset': {'start': seg['norm']['beg'], 'end': seg['norm']['end']},
+                       'reco_text': reco_text,
+                       'reco_offset': {'start': seg['reco']['beg'], 'end': seg['reco']['end']},
+                       'audio_offsets': [(x.start, x.end) for x in reco_chunk],
+                       'cer': distance(reco_text, norm_text) / len(norm_text)})
 
     with open(args.out, 'w') as f:
-        json.dump(ret, f, indent=4)
-
-    ret = sorted(ret, key=lambda x: x['cer'], reverse=True)
-
-    if ret[0]['cer'] > 0.5:
-        print("WARNING: there are segments that have higher than 50% error rate!")
-
-    print('List of 10 worst segments:')
-    for i in range(10):
-        print(f'CER: {ret[i]["cer"]:0.2%}')
-        print('REF: ', ret[i]['ref_text'])
-        print('RECO: ', ret[i]['reco_text'])
+        json.dump(output, f, indent=4)

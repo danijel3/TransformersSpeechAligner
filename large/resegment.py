@@ -39,7 +39,9 @@ def convert_ali_to_corpus_lines(ali: List[Dict], reco: List[Dict], norm: List[Di
     # get time start/end for each word in alignment with text of the word in norm
     # and position of the word in reference text by char start/end
     for s in segs:
+        s['match_error'] = None
         words = sorted(s['w'], key=lambda x: x[0]['start'])
+        s['w'] = []
         if not words:
             continue
         s['norm'] = ' '.join([x[0]['text'] for x in words])
@@ -51,7 +53,6 @@ def convert_ali_to_corpus_lines(ali: List[Dict], reco: List[Dict], norm: List[Di
         } for x in words]
         s['start'] = s['words'][0]['time_s']
         s['end'] = s['words'][-1]['time_e']
-        s['w'] = []
 
     # add words from recognition to segments
     unaligned = []
@@ -62,13 +63,13 @@ def convert_ali_to_corpus_lines(ali: List[Dict], reco: List[Dict], norm: List[Di
             if 'start' in s and s['start'] <= mp <= s['end']:
                 s['w'].append(w)
                 found = True
-                break
         if not found:
             unaligned.append(w)
 
     # for reco words add start/end times and compute WER
     for s in segs:
         words = sorted(s['w'], key=lambda x: x['start'])
+        s.pop('w')
         if not words:
             continue
         s['reco'] = ' '.join([x['text'] for x in words])
@@ -76,10 +77,6 @@ def convert_ali_to_corpus_lines(ali: List[Dict], reco: List[Dict], norm: List[Di
             'time_s': round(x['start'], 3),
             'time_e': round(x['end'], 3),
         } for x in words]
-        s.pop('w')
-        s['errors'] = get_errors(s['norm'].split(), s['reco'].split())
-        s['errors']['cer'] = get_errors(s['norm'], s['reco'])['wer']
-        s['match_error'] = None
 
     # combine unaligned reco words into segments
     unaligned = sorted(unaligned, key=lambda x: x['start'])
@@ -107,25 +104,10 @@ def convert_ali_to_corpus_lines(ali: List[Dict], reco: List[Dict], norm: List[Di
                           'match_error': 'only in reco'})
 
     for seg in segs:
-        if 'norm' not in segs and 'match_error' not in seg:
+        if 'norm' not in seg:
             seg['match_error'] = 'only in reference'
-            seg.pop('w')
 
-    def key(x):
-        t = x['id'].split('.')
-        return t[0], int(t[1][1:])
-
-    segs = sorted(segs, key=key)
-
-    for rs in reco_segs:
-        added = False
-        for i, s in enumerate(segs):
-            if 'start' in s and s['start'] > rs['start']:
-                segs.insert(i, rs)
-                added = True
-                break
-        if not added:
-            segs.append(rs)
+    segs = sorted(segs, key=lambda x: x['start'] if 'start' in x else 0)
 
     for s in segs:
         if 'reco' in s and 'norm' in s:
