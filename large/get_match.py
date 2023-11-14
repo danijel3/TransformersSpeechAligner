@@ -185,7 +185,8 @@ def search_initial_matches(reco_words: List, reco_chunks: List, norm_words: List
     return segs
 
 
-def search_between_segs(segs: List, reco_words: List, norm_words: List, ib_score_th: float = 0.5) -> List[Dict]:
+def search_between_segs(segs: List, reco_words: List, norm_words: List, ib_score_th: float = 0.5,
+                        max_len: float = 2000) -> List[Dict]:
     ib_segs = [{'reco': {'beg': p['reco']['end'], 'end': n['reco']['beg']},
                 'norm': {'beg': p['norm']['end'], 'end': n['norm']['beg']}} for p, n in zip(segs[:-1], segs[1:])]
     ib_segs = list(
@@ -229,7 +230,7 @@ def search_between_segs(segs: List, reco_words: List, norm_words: List, ib_score
         norm_text = ' '.join([x.text for x in norm_words[nb:ne]])
         score = distance(reco_text, norm_text) / len(norm_text)
 
-        if score < ib_score_th:
+        if score < ib_score_th and reco_words[re].end - reco_words[rb].start < max_len:
             segs.append({'reco': {'beg': rb, 'end': re}, 'norm': {'beg': nb, 'end': ne}})
 
     return sorted(segs, key=lambda x: x['reco']['beg'])
