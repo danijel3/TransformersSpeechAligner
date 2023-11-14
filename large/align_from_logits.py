@@ -13,7 +13,11 @@ from src.align import viterbi
 def extract_logits(logits: np.ndarray, words: List[Tuple], lps: float = 50, margin: float = 0.25) -> Tuple[
     np.ndarray, np.ndarray, int]:
     offset = int((words[0][0] - margin) * lps)
+    if offset < 0:
+        offset = 0
     length = int((words[-1][1] + margin) * lps) - offset
+    if offset + length > logits.shape[0]:
+        length = logits.shape[0] - offset
     segment = logits[offset:offset + length]
     mask = np.zeros(segment.shape[0], dtype=bool)
     for word in words:
