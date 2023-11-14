@@ -1,7 +1,8 @@
 import argparse
 import json
+from multiprocessing.pool import ThreadPool
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 
 import numpy as np
 from tqdm import tqdm
@@ -28,9 +29,9 @@ def extract_logits(logits: np.ndarray, words: List[Tuple], lps: float = 50, marg
 
 
 def align(match: List, logits: np.ndarray, vps: float = 50, pad_token_id: int = 0,
-          word_delimiter_token_id: int = 4) -> List:
-    ali = []
-    for seg in tqdm(match):
+          word_delimiter_token_id: int = 4, nproc: int = 8) -> List:
+    def task(seg: Dict) -> List:
+        ali = []
         l, m, o = extract_logits(logits, seg['audio_offsets'])
         labels = processor(text=seg['ref_text'])['input_ids']
         words = seg['ref_text'].split()
@@ -53,6 +54,12 @@ def align(match: List, logits: np.ndarray, vps: float = 50, pad_token_id: int = 
                     ali.append({'text': words[wc], 'pos': pos[wc], 'start': fix + o, 'end': fix + dur + o})
                     wc += 1
                 ls = t + 1
+        return ali
+
+    pool = ThreadPool(processes=nproc)
+    ali = []
+    for a in tqdm(pool.imap_unordered(task, match), total=len(match)):
+        ali.extend(a)
 
     ali = sorted(ali, key=lambda x: x['start'])
     ret = [ali[0]]
@@ -70,6 +77,7 @@ if __name__ == '__main__':
     parser.add_argument('model', type=str)
     parser.add_argument('output', type=Path)
     parser.add_argument('--vps', type=int, default=50, help='provide -1 to recalculate from model (slow)')
+    parser.add_argument('--nproc', type=int, default=8)
 
     args = parser.parse_args()
 
@@ -89,7 +97,7 @@ if __name__ == '__main__':
         model = AutoModel.from_pretrained(args.w2v2_model)
         fps = processor.feature_extractor.sampling_rate / model.config.num_codevectors_per_group
 
-    ali = align(match, logits, vps, pad_token_id, word_delimiter_token_id)
+    ali = align(match, logits, vps, pad_token_id, word_delimiter_token_id,nproc=args.nproc)
 
     with open(args.output, 'w') as f:
         json.dump(ali, f, indent=4)
