@@ -230,7 +230,7 @@ def search_between_segs(segs: List, reco_words: List, norm_words: List, ib_score
         norm_text = ' '.join([x.text for x in norm_words[nb:ne]])
         score = distance(reco_text, norm_text) / len(norm_text)
 
-        if score < ib_score_th and reco_words[re].end - reco_words[rb].start < max_len:
+        if score < ib_score_th and reco_words[re - 1].end - reco_words[rb].start < max_len:
             segs.append({'reco': {'beg': rb, 'end': re}, 'norm': {'beg': nb, 'end': ne}})
 
     return sorted(segs, key=lambda x: x['reco']['beg'])
