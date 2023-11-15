@@ -54,10 +54,10 @@ def get_stats(annotations: List) -> Dict:
 def reindex():
     global audio_dir, json_dir
 
-    if 'audio_dir' in request.args:
-        audio_dir = Path(request.args['audio_dir'])
-    if 'json_dir' in request.args:
-        json_dir = Path(request.args['json_dir'])
+    if 'audio_dir' in request.form:
+        audio_dir = Path(request.form['audio_dir'])
+    if 'json_dir' in request.form:
+        json_dir = Path(request.form['json_dir'])
 
     utt_to_date = {}
     if Path('utt_to_date.json').exists():
