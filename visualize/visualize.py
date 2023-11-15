@@ -8,14 +8,23 @@ from flask import Flask, render_template, make_response, request, abort, jsonify
 
 app = Flask('visualize')
 
+settings_file = Path('settings.json')
 index_file = Path('index.json')
-
-audio_dir = Path('debug-croatian/wav')
-json_dir = Path('debug-croatian/output')
 
 
 @app.route('/')
 def index():
+    audio_dir = Path('debug-croatian/wav')
+    json_dir = Path('debug-croatian/output')
+
+    if settings_file.exists():
+        with open(settings_file) as f:
+            settings = json.load(f)
+            if 'audio_dir' in settings:
+                audio_dir = Path(settings['audio_dir'])
+            if 'json_dir' in settings:
+                json_dir = Path(settings['json_dir'])
+
     files = []
 
     if index_file.exists():
@@ -52,12 +61,27 @@ def get_stats(annotations: List) -> Dict:
 
 @app.route('/reindex', methods=['POST'])
 def reindex():
-    global audio_dir, json_dir
+    settings = {}
+    audio_dir = Path('debug-croatian/wav')
+    json_dir = Path('debug-croatian/output')
+
+    if settings_file.exists():
+        with open(settings_file) as f:
+            settings = json.load(f)
+            if 'audio_dir' in settings:
+                audio_dir = Path(settings['audio_dir'])
+            if 'json_dir' in settings:
+                json_dir = Path(settings['json_dir'])
 
     if 'audio_dir' in request.form:
         audio_dir = Path(request.form['audio_dir'])
     if 'json_dir' in request.form:
         json_dir = Path(request.form['json_dir'])
+
+    settings['audio_dir'] = str(audio_dir)
+    settings['json_dir'] = str(json_dir)
+    with open(settings_file, 'w') as f:
+        json.dump(settings, f, indent=4)
 
     utt_to_date = {}
     if Path('utt_to_date.json').exists():
@@ -84,6 +108,17 @@ def reindex():
 
 @app.route('/visualize/<utt>')
 def visualize(utt):
+    audio_dir = Path('debug-croatian/wav')
+    json_dir = Path('debug-croatian/output')
+
+    if settings_file.exists():
+        with open(settings_file) as f:
+            settings = json.load(f)
+            if 'audio_dir' in settings:
+                audio_dir = Path(settings['audio_dir'])
+            if 'json_dir' in settings:
+                json_dir = Path(settings['json_dir'])
+
     audio_file = audio_dir / (utt + '.wav')
     json_file = json_dir / (utt + '.json')
 
@@ -104,6 +139,14 @@ def visualize(utt):
 
 @app.route('/audio/<utt>')
 def get_audio(utt):
+    audio_dir = Path('debug-croatian/wav')
+
+    if settings_file.exists():
+        with open(settings_file) as f:
+            settings = json.load(f)
+            if 'audio_dir' in settings:
+                audio_dir = Path(settings['audio_dir'])
+
     audio_file = audio_dir / (utt + '.wav')
 
     if not audio_file.exists():
@@ -138,13 +181,4 @@ def get_audio(utt):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('wav_dir', type=Path)
-    parser.add_argument('json_dir', type=Path)
-
-    args = parser.parse_args()
-
-    audio_dir = args.wav_dir
-    json_dir = args.json_dir
-
     app.run()
