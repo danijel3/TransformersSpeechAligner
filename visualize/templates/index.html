@@ -2,14 +2,67 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&display=swap" rel="stylesheet">
+
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <link href="https://cdn.datatables.net/v/dt/dt-1.13.4/b-2.3.6/b-colvis-2.3.6/b-html5-2.3.6/datatables.min.css"
+          rel="stylesheet"/>
+    <script src="https://cdn.datatables.net/v/dt/dt-1.13.4/b-2.3.6/b-colvis-2.3.6/b-html5-2.3.6/datatables.min.js"></script>
 </head>
 <body>
-<h1>Choose utterance</h1>
-<ul>
-    {% for file in files %}
-        <li><a href="visualize/{{ file }}">{{ file }}</a></li>
-    {% endfor %}
-</ul>
+<h1>Visualize ParlaSpeech data</h1>
+<div id="stats">
+    <form action="/reindex" method="post">
+        <label for="audio_dir">Audio directory:</label>
+        <input type="text" id="audio_dir" name="audio_dir" value="{{ audio_dir }}">
+        <label for="json_dir">JSON directory:</label>
+        <input type="text" id="json_dir" name="json_dir" value="{{ json_dir }}">
+        <input type="submit" value="Re-index">
+    </form>
+</div>
+
+<div class="table-container">
+    <table id="index-table" class="cell-border compact stripe">
+        <thead>
+        <tr>
+            <th>Utterance</th>
+            <th>Date</th>
+            <th>Ref only seg#</th>
+            <th>Ref only words#</th>
+            <th>Reco only seg#</th>
+            <th>Reco only words#</th>
+            <th>OK match seg#</th>
+            <th>OK match words#</th>
+            <th>Overall WER%</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for file in files %}
+            <tr>
+                <td><a href="visualize/{{ file.utt }}">{{ file.utt }}</a></td>
+                <td>{{ file.date }}</td>
+                <td>{{ file.ref_only_seg }}</td>
+                <td>{{ file.ref_only_words }}</td>
+                <td>{{ file.reco_only_seg }}</td>
+                <td>{{ file.reco_only_words }}</td>
+                <td>{{ file.ok_match_seg }}</td>
+                <td>{{ file.ok_match_words }}</td>
+                <td>{{ file.overall_wer }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+    const dataTable = new DataTable("#index-table", {
+        dom: 'Bfrtip', buttons: [{extend: 'csv', className: 'csvButton'}]
+    });
+</script>
 </body>
 </html>
