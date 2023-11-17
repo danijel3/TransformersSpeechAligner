@@ -55,7 +55,10 @@ def get_stats(annotations: List) -> Dict:
             corr += seg['errors']['corr']
             num += seg['errors']['num']
 
-    stats['overall_wer'] = round(100 * (num - corr) / num, 2)
+    if num > 0:
+        stats['overall_wer'] = round(100 * (num - corr) / num, 2)
+    else:
+        stats['overall_wer'] = 0
     return stats
 
 
