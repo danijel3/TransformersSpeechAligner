@@ -84,6 +84,12 @@ if __name__ == '__main__':
     with open(args.match) as f:
         match = json.load(f)
 
+    if not match:
+        print('Nothing to align')
+        with open(args.output, 'w') as f:
+            json.dump([], f, indent=4)
+        exit(0)
+
     logits = np.load(args.logits)['logits']
 
     processor = AutoProcessor.from_pretrained(args.model)
@@ -97,7 +103,7 @@ if __name__ == '__main__':
         model = AutoModel.from_pretrained(args.w2v2_model)
         fps = processor.feature_extractor.sampling_rate / model.config.num_codevectors_per_group
 
-    ali = align(match, logits, vps, pad_token_id, word_delimiter_token_id,nproc=args.nproc)
+    ali = align(match, logits, vps, pad_token_id, word_delimiter_token_id, nproc=args.nproc)
 
     with open(args.output, 'w') as f:
         json.dump(ali, f, indent=4)
