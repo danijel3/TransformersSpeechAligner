@@ -175,6 +175,9 @@ def search_initial_matches(reco_words: List, reco_chunks: List, norm_words: List
             (rb, re), (nb, ne) = m
             segs.append({'reco': {'beg': rb, 'end': re}, 'norm': {'beg': nb, 'end': ne}})
 
+    if not segs:
+        return []
+
     segs = sorted(segs, key=lambda x: x['norm']['beg'])
     seg_fix = [segs[0]]
     for seg in segs[1:]:
@@ -281,6 +284,18 @@ if __name__ == '__main__':
     reco_chunks = reco_to_chunks(reco_words)
 
     segs = search_initial_matches(reco_words, reco_chunks, norm_words)
+
+    if not segs:
+        print('WARNING: no initial match found. Retrying with looser criteria...')
+
+        segs = search_initial_matches(reco_words, reco_chunks, norm_words, good_th=0.2)
+
+        if not segs:
+            print('WARNING: still no initial match found. Quitting...')
+
+            with open(args.out, 'w') as f:
+                json.dump([], f, indent=4)
+            exit(0)
 
     prev = 0
     for seg in sorted(segs, key=lambda x: x['norm']['beg']):
