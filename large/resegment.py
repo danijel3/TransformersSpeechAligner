@@ -91,21 +91,20 @@ def convert_ali_to_corpus_lines(ali: List[Dict], reco: List[Dict], norm: List[Di
                 seg.append(w)
         unaligned_segs.append(seg)
 
-    # add unaligned segments to final segments list
-    reco_segs = []
-    for seg in unaligned_segs:
-        reco_segs.append({'reco': ' '.join([x['text'] for x in seg]),
-                          'reco_words': [{
-                              'time_s': round(x['start'], 3),
-                              'time_e': round(x['end'], 3)
-                          } for x in seg],
-                          'start': round(seg[0]['start'], 3),
-                          'end': round(seg[-1]['end'], 3),
-                          'match_error': 'only in reco'})
-
     for seg in segs:
         if 'norm' not in seg:
             seg['match_error'] = 'only in reference'
+
+    # add unaligned segments to final segments list
+    for seg in unaligned_segs:
+        segs.append({'reco': ' '.join([x['text'] for x in seg]),
+                     'reco_words': [{
+                         'time_s': round(x['start'], 3),
+                         'time_e': round(x['end'], 3)
+                     } for x in seg],
+                     'start': round(seg[0]['start'], 3),
+                     'end': round(seg[-1]['end'], 3),
+                     'match_error': 'only in reco'})
 
     segs = sorted(segs, key=lambda x: x['start'] if 'start' in x else 0)
 
