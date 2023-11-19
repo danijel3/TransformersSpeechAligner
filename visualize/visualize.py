@@ -100,9 +100,9 @@ def reindex():
         else:
             utt['date'] = ''
 
-        m = yt.search(utt['utt'])
+        m = yt.findall(utt['utt'])
         if m:
-            utt['yt'] = m.group(0)
+            utt['yt'] = m[-1]
         else:
             utt['yt'] = ''
 
