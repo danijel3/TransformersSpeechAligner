@@ -17,7 +17,7 @@
 <body>
 <h1>Visualize ParlaSpeech data</h1>
 <div id="stats">
-    <form action="/reindex" method="post">
+    <form action="/reindex" method="post" onclick="return confirm('Are you sure?')">
         <label for="audio_dir">Audio directory:</label>
         <input type="text" id="audio_dir" name="audio_dir" value="{{ audio_dir }}">
         <label for="json_dir">JSON directory:</label>
@@ -31,6 +31,7 @@
         <thead>
         <tr>
             <th>Utterance</th>
+            <th>YT</th>
             <th>Date</th>
             <th>Ref only seg#</th>
             <th>Ref only words#</th>
@@ -45,6 +46,14 @@
         {% for file in files %}
             <tr>
                 <td><a href="visualize/{{ file.utt }}">{{ file.utt }}</a></td>
+                <td>
+                    {% if file.yt %}
+                        <a href="visualize/{{ file.utt }}/yt/{{ file.yt }}">
+                            <img src="{{ url_for('static',filename='youtube-logo-24.png') }}" class="yt-icon"
+                                 alt="youtube">
+                        </a>
+                    {% endif %}
+                </td>
                 <td>{{ file.date }}</td>
                 <td>{{ file.ref_only_seg }}</td>
                 <td>{{ file.ref_only_words }}</td>

@@ -91,6 +91,7 @@ def reindex():
         with open('utt_to_date.json') as f:
             utt_to_date = json.load(f)
 
+    yt = re.compile(r'[0-9a-zA-Z\_\-]{11}')
     files = []
     for json_f in json_dir.glob('*.json'):
         utt = {'utt': json_f.stem}
@@ -98,6 +99,13 @@ def reindex():
             utt['date'] = utt_to_date[utt['utt']]
         else:
             utt['date'] = ''
+
+        m = yt.search(utt['utt'])
+        if m:
+            utt['yt'] = m.group(0)
+        else:
+            utt['yt'] = ''
+
         with open(json_f) as f:
             annotations = json.load(f)
         utt.update(get_stats(annotations))
@@ -109,8 +117,9 @@ def reindex():
     return redirect('/')
 
 
-@app.route('/visualize/<utt>')
-def visualize(utt):
+@app.route('/visualize/<utt>', defaults={'yt_id': None})
+@app.route('/visualize/<utt>/yt/<yt_id>')
+def visualize(utt, yt_id):
     audio_dir = Path('debug-croatian/wav')
     json_dir = Path('debug-croatian/output')
 
@@ -137,7 +146,11 @@ def visualize(utt):
     if 'noref' in request.args:
         annot_filt = list(filter(lambda x: x['match_error'] != 'only in reference', annotations))
 
-    return render_template('visualize.html', utt=utt, annotations=annot_filt, stats=stats)
+    doc = 'audio_player.html'
+    if yt_id:
+        doc = 'youtube_player.html'
+
+    return render_template(doc, utt=utt, annotations=annot_filt, stats=stats, yt=yt_id)
 
 
 @app.route('/audio/<utt>')

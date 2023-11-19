@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <title>Parlaspeech</title>
+</head>
+<body>
+<div id="player--container">
+    <audio id="player" controls style="width:90%">
+        <source src="/audio/{{ utt }}">
+    </audio>
+
+    <div class="playertoolbar">
+        <div id="stepback" class="playerbtn" onclick="stepback()">&#x23ee;</div>
+        <div id="scroll" class="playerbtn" onclick="scroll_into_view()">&#x2316;</div>
+        <div id="stepfwd" class="playerbtn" onclick="stepforward()">&#x23ed;</div>
+    </div>
+
+</div>
+
+{% include 'legend_stats.html' %}
+
+{% include 'segment_container.html' %}
+
+<script src="{{ url_for('static',filename = 'audio_scripts.js') }}"></script>
+
+</body>
+</html>

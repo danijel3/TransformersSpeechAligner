@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <title>Parlaspeech</title>
+</head>
+<body>
+
+<div id="videoplayer--container">
+    <div id="player"></div>
+
+    <div class="playertoolbar">
+        <div id="scroll" class="playerbtn" onclick="scroll_into_view()">&#x2316;</div>
+    </div>
+
+    {% include 'legend_stats.html' %}
+
+</div>
+
+<div id="videoplayer--segments">
+    {% include 'segment_container.html' %}
+</div>
+
+<script>
+    const youtube_video_id = "{{ yt }}";
+</script>
+<script src="{{ url_for('static',filename = 'youtube_scripts.js') }}"></script>
+
+</body>
+</html>

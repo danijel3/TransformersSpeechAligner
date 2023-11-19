@@ -1,44 +1,3 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-    <title>Parlaspeech</title>
-</head>
-<body>
-<div id="player--container">
-    <audio id="player" controls style="width:90%">
-        <source src="/audio/{{ utt }}">
-    </audio>
-
-    <div class="playertoolbar">
-        <div id="stepback" class="playerbtn" onclick="stepback()">&#x23ee;</div>
-        <div id="scroll" class="playerbtn" onclick="scroll_into_view()">&#x2316;</div>
-        <div id="stepfwd" class="playerbtn" onclick="stepforward()">&#x23ed;</div>
-    </div>
-
-</div>
-
-<div id="legend">
-    <b>Legend:</b>
-    <span class="wer">word error rate %</span>
-    <span class="text">Corpus text</span>
-    <span class="norm">Normalized text</span>
-    <span class="reco">Reco text</span>
-    <span>Middle-click segment to expand</span>
-    <a href="?noref">Noref version</a>
-</div>
-
-<div id="stats">
-    <b>Stats:</b>
-    {% for k,v in stats.items() %}
-        <div class="stat">
-            <div class="stat--key">{{ k }}</div>
-            <div class="stat--value">{{ v }}</div>
-        </div>
-    {% endfor %}
-</div>
-
 <div id="segments--container">
 
     {% for seg in annotations %}
@@ -105,8 +64,3 @@
 
     {%- endfor %}
 </div>
-
-<script src="{{ url_for('static',filename = 'scripts.js') }}"></script>
-
-</body>
-</html>

@@ -1,0 +1,19 @@
+<div id="legend">
+    <b>Legend:</b>
+    <span class="wer">word error rate %</span>
+    <span class="text">Corpus text</span>
+    <span class="norm">Normalized text</span>
+    <span class="reco">Reco text</span>
+    <span>Middle-click segment to expand</span>
+    <a href="?noref">Noref version</a>
+</div>
+
+<div id="stats">
+    <b>Stats:</b>
+    {% for k,v in stats.items() %}
+        <div class="stat">
+            <div class="stat--key">{{ k }}</div>
+            <div class="stat--value">{{ v }}</div>
+        </div>
+    {% endfor %}
+</div>
