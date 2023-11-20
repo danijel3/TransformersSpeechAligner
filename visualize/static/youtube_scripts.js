@@ -22,15 +22,11 @@ function onYouTubeIframeAPIReady() {
 let prev_selected = null;
 
 function make_selected(el) {
-    if (event.which !== 2) {
-        return;
-    }
-
     if (el.classList.contains('selected')) {
         el.classList.remove('selected');
         prev_selected = null;
     } else {
-        if (player.getPlayerState() == 2 && el !== prev_selected) {
+        if (player.getPlayerState() != 1 && el !== prev_selected) {
             if (prev_selected) {
                 prev_selected.classList.remove('selected');
             }
@@ -41,7 +37,6 @@ function make_selected(el) {
     }
 }
 
-// const player = document.getElementById('player');
 let pause_after = -1;
 
 setInterval(() => {

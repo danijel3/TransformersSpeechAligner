@@ -129,6 +129,11 @@ body {
     padding: 0.25rem;
 }
 
+.seg--expand {
+    align-self: center;
+    cursor: pointer;
+}
+
 .match-error {
     text-align: center;
     color: red;

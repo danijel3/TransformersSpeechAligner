@@ -1,9 +1,6 @@
 let prev_selected = null;
 
 function make_selected(el) {
-    if (event.which !== 2) {
-        return;
-    }
 
     if (el.classList.contains('selected')) {
         el.classList.remove('selected');

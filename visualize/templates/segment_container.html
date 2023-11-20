@@ -27,7 +27,9 @@
                 {% endif %}
             </div>
 
-            <div class="seg--data" onauxclick="make_selected(this)" data-start="{{ seg['start'] }}"
+            <div class="seg--expand" onclick="make_selected(this.nextElementSibling)">&#8862;</div>
+
+            <div class="seg--data" data-start="{{ seg['start'] }}"
                  data-end="{{ seg['end'] }}">
                 {%- if 'text' in seg %}
                     <div class="text">
