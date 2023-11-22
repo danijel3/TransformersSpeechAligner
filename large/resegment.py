@@ -1,5 +1,6 @@
 import argparse
 import json
+import math
 from pathlib import Path
 from typing import List, Dict, Union
 
@@ -18,7 +19,8 @@ def get_errors(source: Union[List[str], str], dest: Union[List[str], str]) -> Di
     return err
 
 
-def convert_ali_to_corpus_lines(ali: List[Dict], reco: List[Dict], norm: List[Dict], sil_gap: float = 2) -> List[Dict]:
+def convert_ali_to_corpus_lines(ali: List[Dict], reco: List[Dict], norm: List[Dict], sil_gap: float = 2,
+                                wer_filter: float = math.inf) -> List[Dict]:
     segs = []  # final segments list
     norm_words = []  # map of words to line and position in line
     # create list of segments with ids and original (reference) text
@@ -54,6 +56,8 @@ def convert_ali_to_corpus_lines(ali: List[Dict], reco: List[Dict], norm: List[Di
         s['start'] = s['words'][0]['time_s']
         s['end'] = s['words'][-1]['time_e']
 
+    segs = sorted(segs, key=lambda x: x['start'] if 'start' in x else 0)
+
     # add words from recognition to segments
     unaligned = []
     for w in reco:
@@ -77,6 +81,15 @@ def convert_ali_to_corpus_lines(ali: List[Dict], reco: List[Dict], norm: List[Di
             'time_s': round(x['start'], 3),
             'time_e': round(x['end'], 3),
         } for x in words]
+        s['errors'] = get_errors(s['norm'].split(), s['reco'].split())
+        s['errors']['cer'] = get_errors(s['norm'], s['reco'])['wer']
+
+        if s['errors']['wer'] >= wer_filter:
+            s.pop('reco')
+            s.pop('reco_words')
+            s.pop('errors')
+            s.pop('norm')
+            unaligned.extend(words)
 
     # combine unaligned reco words into segments
     unaligned = sorted(unaligned, key=lambda x: x['start'])
@@ -108,11 +121,6 @@ def convert_ali_to_corpus_lines(ali: List[Dict], reco: List[Dict], norm: List[Di
 
     segs = sorted(segs, key=lambda x: x['start'] if 'start' in x else 0)
 
-    for s in segs:
-        if 'reco' in s and 'norm' in s:
-            s['errors'] = get_errors(s['norm'].split(), s['reco'].split())
-            s['errors']['cer'] = get_errors(s['norm'], s['reco'])['wer']
-
     return segs
 
 
@@ -124,6 +132,8 @@ if __name__ == '__main__':
     parser.add_argument('reco', type=Path, help='Path to recognition JSON file')
     parser.add_argument('norm', type=Path, help='Path to reference/normalization JSON file')
     parser.add_argument('output', type=Path, help='Path to output JSON file')
+    parser.add_argument('--sil-gap', type=float, default=2, help='Silence gap in seconds')
+    parser.add_argument('--wer-filter', type=float, default=math.inf, help='WER filter')
 
     args = parser.parse_args()
 
@@ -139,7 +149,7 @@ if __name__ == '__main__':
     with open(args.norm) as f:
         norm = json.load(f)
 
-    segs = convert_ali_to_corpus_lines(ali, reco, norm)
+    segs = convert_ali_to_corpus_lines(ali, reco, norm, args.sil_gap, args.wer_filter)
 
     with open(args.output, 'w') as f:
         json.dump(segs, f, indent=4)
