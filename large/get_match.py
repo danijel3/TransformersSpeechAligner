@@ -197,13 +197,15 @@ def search_between_segs(segs: List, reco_words: List, norm_words: List, ib_score
 
     nsegs = sorted(segs, key=lambda x: x['norm']['beg'])
 
+    reco_beg = 0
     reco_end = segs[0]['reco']['beg']
     norm_beg = nsegs[0]['norm']['beg'] - reco_end
     norm_end = nsegs[0]['norm']['beg']
     if norm_beg < 0:
         norm_beg = 0
-    if reco_end > 0 and norm_end > norm_beg:
-        ib_segs.insert(0, {'reco': {'beg': 0, 'end': reco_end}, 'norm': {'beg': norm_beg, 'end': norm_end}})
+        reco_beg = reco_end - norm_end
+    if reco_end > reco_beg and norm_end > norm_beg:
+        ib_segs.insert(0, {'reco': {'beg': reco_beg, 'end': reco_end}, 'norm': {'beg': norm_beg, 'end': norm_end}})
 
     reco_beg = segs[-1]['reco']['end']
     reco_end = len(reco_words)
