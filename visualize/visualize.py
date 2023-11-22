@@ -134,7 +134,10 @@ def visualize(utt, yt_id):
     audio_file = audio_dir / (utt + '.wav')
     json_file = json_dir / (utt + '.json')
 
-    if not audio_file.exists() or not json_file.exists():
+    if not json_file.exists():
+        abort(404)
+
+    if not yt_id and not audio_file.exists():
         abort(404)
 
     with open(json_file) as f:
