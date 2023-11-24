@@ -20,7 +20,7 @@ def get_errors(source: Union[List[str], str], dest: Union[List[str], str]) -> Di
 
 
 def convert_ali_to_corpus_lines(ali: List[Dict], reco: List[Dict], norm: List[Dict], sil_gap: float = 2,
-                                wer_filter: float = math.inf) -> List[Dict]:
+                                cer_filter: float = math.inf) -> List[Dict]:
     segs = []  # final segments list
     norm_words = []  # map of words to line and position in line
     # create list of segments with ids and original (reference) text
@@ -84,7 +84,7 @@ def convert_ali_to_corpus_lines(ali: List[Dict], reco: List[Dict], norm: List[Di
         s['errors'] = get_errors(s['norm'].split(), s['reco'].split())
         s['errors']['cer'] = get_errors(s['norm'], s['reco'])['wer']
 
-        if s['errors']['wer'] >= wer_filter:
+        if s['errors']['cer'] >= cer_filter:
             s.pop('reco')
             s.pop('reco_words')
             s.pop('errors')
@@ -133,7 +133,7 @@ if __name__ == '__main__':
     parser.add_argument('norm', type=Path, help='Path to reference/normalization JSON file')
     parser.add_argument('output', type=Path, help='Path to output JSON file')
     parser.add_argument('--sil-gap', type=float, default=2, help='Silence gap in seconds')
-    parser.add_argument('--wer-filter', type=float, default=math.inf, help='WER filter')
+    parser.add_argument('--cer-filter', type=float, default=math.inf, help='CER filter')
 
     args = parser.parse_args()
 
@@ -149,7 +149,7 @@ if __name__ == '__main__':
     with open(args.norm) as f:
         norm = json.load(f)
 
-    segs = convert_ali_to_corpus_lines(ali, reco, norm, args.sil_gap, args.wer_filter)
+    segs = convert_ali_to_corpus_lines(ali, reco, norm, args.sil_gap, args.cer_filter)
 
     with open(args.output, 'w') as f:
         json.dump(segs, f, indent=4)
